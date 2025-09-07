@@ -1,24 +1,23 @@
 module ID (
-    input  logic [31:0] inst,
+    input  logic [31:0] inst,// just inst
+
+    // Outputs: Register address fields extracted from the instruction
     output logic [4:0]  rs1_addr,
     output logic [4:0]  rs2_addr,
     output logic [4:0]  rd_addr,
+
+    // Outputs: Instruction type and function fields
     output logic [2:0]  imm_type,
     output logic [2:0]  funct3,
     output logic [6:0]  funct7,
-    // Control signals for pipeline
+    // Control signals
     output logic        reg_write,
     output logic        mem_read,
     output logic        mem_write,
     output logic        branch,
-    output logic [3:0]  alu_op,
-    // one-hot instruction ID for hazard/forwarding/debug
-    output logic        is_addi,
-    output logic        is_sub
-    // ...
-);
+    output logic [3:0]  alu_op
+    );
 
-    // Opcodes (same as before)
     localparam OPCODE_LUI      = 7'b0110111;
     localparam OPCODE_AUIPC    = 7'b0010111;
     localparam OPCODE_JAL      = 7'b1101111;
@@ -39,11 +38,13 @@ module ID (
     localparam IMM_J = 3'd4;
 
     // ALU operation codes (define as needed)
-    localparam ALU_ADD = 4'd0;
-    localparam ALU_SUB = 4'd1;
-    localparam ALU_AND = 4'd2;
-    localparam ALU_OR  = 4'd3;
-    localparam ALU_XOR = 4'd4;
+    localparam ALU_ADD      = 4'd0; // addi
+    localparam ALU_SUB      = 4'd1;
+    localparam ALU_AND      = 4'd2;
+    localparam ALU_OR       = 4'd3;
+    localparam ALU_XOR      = 4'd4;
+    localparam ALU_ADD_REG  = 4'd5; //add
+
     // ... add more for your ALU
 
     // Extract fields
@@ -64,15 +65,13 @@ module ID (
         mem_write  = 1'b0;
         branch     = 1'b0;
         alu_op     = ALU_ADD;
-        is_addi    = 1'b0;
-        is_sub     = 1'b0;
-
+        
         case (opcode)
             OPCODE_OP_IMM: begin // I-type ALU (e.g., addi)
                 imm_type  = IMM_I;
                 reg_write = 1'b1;
                 case (funct3)
-                    3'b000: begin alu_op = ALU_ADD; is_addi = 1'b1; end // addi
+                    3'b000: begin alu_op = ALU_ADD; end // addi
                     3'b111: begin alu_op = ALU_AND; end // andi
                     3'b110: begin alu_op = ALU_OR;  end // ori
                     // ... add more I-type ALU
@@ -86,10 +85,12 @@ module ID (
                 case (funct3)
                     3'b000: begin
                         if (funct7 == 7'b0000000) begin
-                            alu_op = ALU_ADD; is_addi = 1'b1; // add
+                            alu_op = ALU_ADD_REG; // add
                         end else if (funct7 == 7'b0100000) begin
-                            alu_op = ALU_SUB; is_sub = 1'b1; // sub
-                        end
+                            alu_op = ALU_SUB;  // sub
+                        end else begin
+                            alu_op = ALU_ADD_REG;//illegal
+                            end
                     end
                     3'b111: alu_op = ALU_AND; // and
                     3'b110: alu_op = ALU_OR;  // or
