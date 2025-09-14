@@ -1,39 +1,39 @@
 module top (
-    input  logic clk,
-    input  logic rst,
-    output logic [31:0] pc,
-    output logic [31:0] instr,
-    output logic [31:0] x1,
-    output logic [31:0] x2,
-    output logic [31:0] x3,
-    output logic [31:0] x4
-    );
+    input clk,
+    input rst,
+    output [31:0] pc,
+    output [31:0] instr,
+    output [31:0] x1,
+    output [31:0] x2,
+    output [31:0] x3,
+    output [31:0] x4
+);
 
     // IF stage
-    logic [31:0] pc_next;
+    wire [31:0] pc_next;
 
     // ID stage
-    logic [4:0] rs1_addr, rs2_addr, rd_addr;
-    logic [2:0] imm_type, funct3;
-    logic [6:0] funct7;
-    logic reg_write, mem_read, mem_write, branch;
-    logic [3:0] alu_op;
+    wire [4:0] rs1_addr, rs2_addr, rd_addr;
+    wire [2:0] imm_type, funct3;
+    wire [6:0] funct7;
+    wire reg_write, mem_read, mem_write, branch;
+    wire [3:0] alu_op;
 
     // Regfile
-    logic [31:0] rs1_data, rs2_data;
-    logic [31:0] regs_out1, regs_out2, regs_out3,regs_out4;
+    wire [31:0] rs1_data, rs2_data;
+    wire [31:0] regs_out1, regs_out2, regs_out3, regs_out4;
     // Immgen
-    logic [31:0] imm;
+    wire [31:0] imm;
 
     // EX stage
-    logic [31:0] alu_result;
+    wire [31:0] alu_result;
 
     // MEM stage
-    logic [31:0] mem_data;
+    wire [31:0] mem_data;
 
     // WB stage
-    logic [31:0] wb_data;
-    logic mem_to_reg;
+    wire [31:0] wb_data;
+    wire mem_to_reg;
 
     // PC logic (always PC + 4 for now)
     assign pc_next = pc + 32'd4;

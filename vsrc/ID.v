@@ -1,23 +1,24 @@
 module ID (
-    input  logic [31:0] inst,// just inst
+    input  [31:0] inst, // just inst
 
     // Outputs: Register address fields extracted from the instruction
-    output logic [4:0]  rs1_addr,
-    output logic [4:0]  rs2_addr,
-    output logic [4:0]  rd_addr,
+    output [4:0]  rs1_addr,
+    output [4:0]  rs2_addr,
+    output [4:0]  rd_addr,
 
     // Outputs: Instruction type and function fields
-    output logic [2:0]  imm_type,
-    output logic [2:0]  funct3,
-    output logic [6:0]  funct7,
+    output reg [2:0]  imm_type,
+    output reg [2:0]  funct3,
+    output reg [6:0]  funct7,
     // Control signals
-    output logic        reg_write,
-    output logic        mem_read,
-    output logic        mem_write,
-    output logic        branch,
-    output logic [3:0]  alu_op
-    );
+    output reg        reg_write,
+    output reg        mem_read,
+    output reg        mem_write,
+    output reg        branch,
+    output reg [3:0]  alu_op
+);
 
+    // Opcodes
     localparam OPCODE_LUI      = 7'b0110111;
     localparam OPCODE_AUIPC    = 7'b0010111;
     localparam OPCODE_JAL      = 7'b1101111;
@@ -37,18 +38,15 @@ module ID (
     localparam IMM_U = 3'd3;
     localparam IMM_J = 3'd4;
 
-    // ALU operation codes (define as needed)
+    // ALU operation codes
     localparam ALU_ADD      = 4'd0; // addi
     localparam ALU_SUB      = 4'd1;
     localparam ALU_AND      = 4'd2;
     localparam ALU_OR       = 4'd3;
     localparam ALU_XOR      = 4'd4;
-    localparam ALU_ADD_REG  = 4'd5; //add
+    localparam ALU_ADD_REG  = 4'd5; // add
 
-    // ... add more for your ALU
-
-    // Extract fields
-    logic [6:0] opcode;
+    wire [6:0] opcode;
     assign opcode    = inst[6:0];
     assign funct3    = inst[14:12];
     assign funct7    = inst[31:25];
@@ -56,8 +54,7 @@ module ID (
     assign rs2_addr  = inst[24:20];
     assign rd_addr   = inst[11:7];
 
-    // Default assignments
-    always_comb begin
+    always @(*) begin
         // Default values
         imm_type   = IMM_I;
         reg_write  = 1'b0;
@@ -65,32 +62,32 @@ module ID (
         mem_write  = 1'b0;
         branch     = 1'b0;
         alu_op     = ALU_ADD;
-        
+
         case (opcode)
             OPCODE_OP_IMM: begin // I-type ALU (e.g., addi)
                 imm_type  = IMM_I;
                 reg_write = 1'b1;
                 case (funct3)
-                    3'b000: begin alu_op = ALU_ADD; end // addi
-                    3'b111: begin alu_op = ALU_AND; end // andi
-                    3'b110: begin alu_op = ALU_OR;  end // ori
+                    3'b000: alu_op = ALU_ADD; // addi
+                    3'b111: alu_op = ALU_AND; // andi
+                    3'b110: alu_op = ALU_OR;  // ori
                     // ... add more I-type ALU
                     default: alu_op = ALU_ADD;
                 endcase
             end
 
             OPCODE_OP: begin // R-type ALU (e.g., add, sub)
-                imm_type  = IMM_I; // not used, but can set
+                imm_type  = IMM_I; // not used
                 reg_write = 1'b1;
                 case (funct3)
                     3'b000: begin
                         if (funct7 == 7'b0000000) begin
                             alu_op = ALU_ADD_REG; // add
                         end else if (funct7 == 7'b0100000) begin
-                            alu_op = ALU_SUB;  // sub
+                            alu_op = ALU_SUB;     // sub
                         end else begin
-                            alu_op = ALU_ADD_REG;//illegal
-                            end
+                            alu_op = ALU_ADD_REG; // illegal
+                        end
                     end
                     3'b111: alu_op = ALU_AND; // and
                     3'b110: alu_op = ALU_OR;  // or

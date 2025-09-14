@@ -1,8 +1,9 @@
 module immgen (
-    input  logic [31:0] inst,      // 32-bit instruction
-    input  logic [2:0]  imm_type,  // Immediate type selector
-    output logic [31:0] imm        // 32-bit immediate output
+    input  [31:0] inst,      // 32-bit instruction
+    input  [2:0]  imm_type,  // Immediate type selector
+    output reg [31:0] imm    // 32-bit immediate output
 );
+
     // Possible encoding for imm_type:
     localparam IMM_I = 3'd0;
     localparam IMM_S = 3'd1;
@@ -10,7 +11,7 @@ module immgen (
     localparam IMM_U = 3'd3;
     localparam IMM_J = 3'd4;
 
-    always_comb begin
+    always @(*) begin
         case (imm_type)
             IMM_I: imm = {{20{inst[31]}}, inst[31:20]}; // I-type
             IMM_S: imm = {{20{inst[31]}}, inst[31:25], inst[11:7]}; // S-type
@@ -20,4 +21,5 @@ module immgen (
             default: imm = 32'b0;
         endcase
     end
+
 endmodule
