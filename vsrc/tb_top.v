@@ -6,7 +6,7 @@ module tb_top;
     reg rst = 1;
     wire [31:0] pc, instr, x1, x2, x3, x4;
 
-    // Connect your top module
+    // Connect top module
     top uut (
         .clk(clk),
         .rst(rst),
