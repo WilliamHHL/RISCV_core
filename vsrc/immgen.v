@@ -4,7 +4,7 @@ module immgen (
     output reg [31:0] imm    // 32-bit immediate output
 );
 
-    // Possible encoding for imm_type:
+    // encoding for imm_type:
     localparam IMM_I = 3'd0;
     localparam IMM_S = 3'd1;
     localparam IMM_B = 3'd2;
