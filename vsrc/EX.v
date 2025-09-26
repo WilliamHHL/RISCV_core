@@ -1,8 +1,8 @@
 module EX (
-    input  reg [31:0] rs1_data,     // Operand 1 (from regfile)
-    input  reg [31:0] rs2_data,     // Operand 2 (from regfile)
-    input  reg [31:0] imm,          // Immediate value (from immgen)
-    input  reg [3:0]  alu_op,       // ALU operation selector
+    input  [31:0] rs1_data,     // Operand 1 (from regfile)
+    input  [31:0] rs2_data,     // Operand 2 (from regfile)
+    input  [31:0] imm,          // Immediate value (from immgen)
+    input  [3:0]  alu_op,       // ALU operation selector
     output reg [31:0] alu_result    // ALU output
 );
     always_comb begin

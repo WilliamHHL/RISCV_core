@@ -9,7 +9,7 @@ module ID (
     // Outputs: Instruction type and function fields
     output reg [2:0]  imm_type,
     output [2:0]  funct3,
-    output reg [6:0]  funct7,
+    output [6:0]  funct7,
     // Control signals
     output reg        reg_write,
     output reg        mem_read,
@@ -62,7 +62,7 @@ module ID (
         mem_write  = 1'b0;
         branch     = 1'b0;
         alu_op     = ALU_ADD;
-        funct7     = funct7; // for completeness
+
 
         case (opcode)
             OPCODE_LUI: begin

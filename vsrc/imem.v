@@ -13,9 +13,9 @@ module imem(
     initial begin
         $readmemh("program.hex", mem);
     end
-
+    reg [31:0] offset;
     always @(posedge clk) begin
-        reg [31:0] offset;
+        
         if (addr >= 32'h8000_0000)
             offset = (addr - 32'h8000_0000) >> 2;
         else
