@@ -18,6 +18,7 @@ module top (
     wire [6:0] funct7;
     wire reg_write, mem_read, mem_write, branch;
     wire [3:0] alu_op;
+    wire alu_rs2_imm;
 
     // Regfile
     wire [31:0] rs1_data, rs2_data;
@@ -70,7 +71,8 @@ module top (
         .mem_read(mem_read),
         .mem_write(mem_write),
         .branch(branch),
-        .alu_op(alu_op)
+        .alu_op(alu_op),
+        .alu_rs2_imm(alu_rs2_imm)
     );
 
     reg_file u_regfile (
@@ -101,7 +103,9 @@ module top (
         .rs2_data(rs2_data),
         .imm(imm),
         .alu_op(alu_op),
+        .alu_rs2_imm(alu_rs2_imm),
         .alu_result(alu_result)
+
     );
 
     // MEM stage
