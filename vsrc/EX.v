@@ -9,7 +9,7 @@ module EX (
 );
     wire [31:0] alu_in2;
     assign alu_in2 = alu_rs2_imm ? imm : rs2_data;
-    always_comb begin
+    always@(*) begin
     case (alu_op)
         4'd0: alu_result = rs1_data + alu_in2;      // addi
         4'd1: alu_result = rs1_data - alu_in2; // sub
