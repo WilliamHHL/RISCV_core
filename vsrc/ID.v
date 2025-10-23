@@ -25,7 +25,11 @@ module ID (
     output reg        use_pc_add,    // 1: use pc + imm for AUIPC via ALU path
     output reg [1:0]  load_size,//determine the load size:LW(10)/LH(01)/LB(00)
     output reg load_signed,//determine the load is for sign number:1 is signed,0 is unsigned
-    output reg [1:0] store_size//determine the store size:SW(10)/SH(01)/SB(00)
+    output reg [1:0] store_size,//determine the store size:SW(10)/SH(01)/SB(00)
+    // Newly added trap/fence visibility
+    output reg        ecall,
+    output reg        ebreak,
+    output reg        fence
 );
 
     // Opcodes
@@ -73,6 +77,10 @@ module ID (
     assign rs1_addr  = inst[19:15];
     assign rs2_addr  = inst[24:20];
     assign rd_addr   = inst[11:7];
+    
+
+    // SYSTEM funct12 field (inst[31:20]) for ECALL/EBREAK decode
+    wire [11:0] funct12 = inst[31:20];
 
     always @(*) begin
         // Defaults
@@ -90,6 +98,9 @@ module ID (
         use_pc_add  = 1'b0;
         load_size = 2'b10;
         load_signed = 1'b1;
+        ecall       = 1'b0;
+        ebreak      = 1'b0;
+        fence       = 1'b0;
         case (opcode)
             // I-type ALU
             OPCODE_OP_IMM: begin
@@ -234,9 +245,27 @@ module ID (
                 alu_rs2_imm = 1'b1;
                 alu_op      = ALU_ADD;
             end
-
-            // FENCE / SYSTEM (NOP-like)
-            OPCODE_FENCE, OPCODE_SYSTEM: begin
+            OPCODE_SYSTEM: begin
+                // funct3==000: ECALL/EBREAK/URET/MRET/SRET/WFI
+                if (funct3 == 3'b000) begin
+                    if (funct12 == 12'h000) begin
+                        // ECALL
+                        ecall = 1'b1;
+                    end else if (funct12 == 12'h001) begin
+                        // EBREAK
+                        ebreak = 1'b1;
+                    end
+                end
+                // Default to NOP behavior until CSR/trap machinery exists
+                reg_write   = 1'b0;
+                alu_rs2_imm = 1'b0;
+                alu_op      = ALU_ADD;
+                imm_type    = IMM_I;
+                wb_sel      = WB_ALU;
+            end
+            // FENCE (NOP-like)
+            OPCODE_FENCE: begin
+                fence       = 1'b1;
                 reg_write   = 1'b0;
                 alu_rs2_imm = 1'b0;
                 alu_op      = ALU_ADD;

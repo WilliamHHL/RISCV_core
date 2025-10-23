@@ -49,6 +49,8 @@ module top (
     wire [31:0] wb_data;     // final writeback to regfile
     wire        mem_to_reg;  // selects MEM vs ALU in WB
 
+    wire ecall, ebreak, fence;
+
     assign x1 = regs_out1;
     assign x2 = regs_out2;
     assign x3 = regs_out3;
@@ -91,7 +93,10 @@ module top (
         .use_pc_add(use_pc_add),
         .load_size(load_size),
         .load_signed(load_signed),
-        .store_size(store_size)
+        .store_size(store_size),
+        .ecall(ecall),
+        .ebreak(ebreak),
+        .fence(fence)
     );
 
     // Regfile
@@ -185,5 +190,21 @@ module top (
         .mem_data(mem_data),
         .wb_data(wb_data)
     );
+
+     // Simulation-only handling for ECALL/EBREAK
+    `ifndef SYNTHESIS
+    always @(posedge clk) begin
+        if (!rst) begin
+            if (ecall) begin
+                $display("ECALL at PC=%08x", pc);
+                $finish;
+            end
+            if (ebreak) begin
+                $display("EBREAK at PC=%08x", pc);
+                $finish;
+            end
+        end
+    end
+    `endif
 
 endmodule
