@@ -31,7 +31,7 @@ module tb_top;
     #20;
     rst = 0;
 
-    repeat (16) begin
+    repeat (50) begin
         @(posedge clk);
         #1;
         $display("PC=%08x instr=%08x | rd=%0d wen=%0d wb=%08x | rs1=%0d rs2=%0d | x2=%08x x3=%08x x4=%08x",

@@ -22,6 +22,10 @@ module top (
     wire alu_rs2_imm;
     wire [1:0] wb_sel;
     wire use_pc_add;
+    wire load_signed;
+    wire [1:0] load_size;
+    wire [1:0] store_size;
+    
 
     // Regfile
     wire [31:0] rs1_data, rs2_data;
@@ -53,7 +57,7 @@ module top (
     // PC register
     PC_reg u_PC (
         .clk(clk),
-        .rstn_sync(rst),
+        .rst_sync(rst),
         .pc(pc),
         .pc_next(pc_next)
     );
@@ -84,7 +88,10 @@ module top (
         .alu_op(alu_op),
         .alu_rs2_imm(alu_rs2_imm),
         .wb_sel(wb_sel),
-        .use_pc_add(use_pc_add)
+        .use_pc_add(use_pc_add),
+        .load_size(load_size),
+        .load_signed(load_signed),
+        .store_size(store_size)
     );
 
     // Regfile
@@ -139,7 +146,10 @@ module top (
         .mem_write(mem_write),
         .alu_result(alu_core_result), // address for LW/SW
         .rs2_data(rs2_data),
-        .mem_data(mem_data)
+        .mem_data(mem_data),
+        .load_signed(load_signed),
+        .load_size(load_size),
+        .store_size(store_size)
     );
 
     // Next PC selection
