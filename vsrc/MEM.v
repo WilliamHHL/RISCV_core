@@ -17,15 +17,17 @@ module MEM (
     
     reg [7:0] dmem [0:DMEM_BYTES-1];
     
+    `ifndef SYNTHESIS
     initial begin
         $readmemh("data.hex", dmem);
     end
+    `endif
     
 
     wire [31:0] dmem_addr = alu_result - DMEM_BASE;
     wire [16:0] addr = dmem_addr[16:0];
 
-    // synthesis translate_off
+    `ifndef SYNTHESIS
     always @(*) begin
         if (mem_read || mem_write) begin
             if ((dmem_addr >= DMEM_BYTES) &&
@@ -44,7 +46,7 @@ module MEM (
             end
         end
     end
-    // synthesis translate_on
+    `endif
 
 
 
@@ -72,10 +74,14 @@ module MEM (
 
     always @(posedge clk) begin  // Byte/half/word stores in little-endian order. UART TX at fixed MMIO emits character on write.
         if (mem_write) begin
+            `ifndef SYNTHESIS
             if (alu_result == UART_TX_ADDR) begin
                 $write("%c", rs2_data[7:0]);
                 $fflush();
-            end else if (dmem_addr < DMEM_BYTES) begin
+            end 
+            else 
+            `endif
+            if (dmem_addr < DMEM_BYTES) begin
             case (store_size)
                 2'b00: dmem[addr] <= rs2_data[7:0];//SB
                 2'b01: begin                       //SH

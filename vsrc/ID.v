@@ -22,7 +22,10 @@ module ID (
     output reg [3:0]  alu_op,
     output reg        alu_rs2_imm,  // 1: immediate, 0: rs2
     output reg [1:0]  wb_sel,       // 00: ALU, 01: MEM, 10: PC+4, 11: IMM
-    output reg        use_pc_add    // 1: use pc + imm for AUIPC via ALU path
+    output reg        use_pc_add,    // 1: use pc + imm for AUIPC via ALU path
+    output reg [1:0]  load_size,//determine the load size:LW(10)/LH(01)/LB(00)
+    output reg load_signed,//determine the load is for sign number:1 is signed,0 is unsigned
+    output reg [1:0] store_size//determine the store size:SW(10)/SH(01)/SB(00)
 );
 
     // Opcodes
@@ -85,7 +88,8 @@ module ID (
         alu_rs2_imm = 1'b0;
         wb_sel      = WB_ALU;
         use_pc_add  = 1'b0;
-
+        load_size = 2'b10;
+        load_signed = 1'b1;
         case (opcode)
             // I-type ALU
             OPCODE_OP_IMM: begin
@@ -116,6 +120,32 @@ module ID (
                 alu_op      = ALU_ADD;
                 imm_type    = IMM_I;
                 wb_sel      = WB_MEM;
+                case(funct3)
+                3'b010:begin //LW
+                    load_size = 2'b10;
+                    load_signed = 1'b1;
+                end
+                3'b001:begin //LH
+                    load_size = 2'b01;
+                    load_signed = 1'b1;
+                end
+                3'b000:begin //LB
+                    load_size = 2'b00;
+                    load_signed = 1'b1;
+                end
+                3'b100:begin//LBU
+                    load_size = 2'b00;
+                    load_signed = 1'b0;
+                end
+                3'b101:begin//LHU
+                    load_size = 2'b01;
+                    load_signed = 1'b0;
+                end
+               default: begin // treat as LW by default
+                load_size = 2'b10;
+                load_signed = 1'b1;
+                end
+            endcase
             end
 
             // JALR
@@ -157,6 +187,13 @@ module ID (
                 alu_op      = ALU_ADD;
                 imm_type    = IMM_S;
                 wb_sel      = WB_ALU; // no WB
+                case (funct3) 
+                    3'b000:store_size = 2'b00;//SB
+                    3'b001:store_size = 2'b01;//SH
+                    3'b010:store_size = 2'b10;//SW
+                    default:
+                    store_size = 2'b10;//SW
+            endcase
             end
 
             // BRANCH
@@ -178,7 +215,7 @@ module ID (
                 alu_op      = ALU_ADD;
             end
 
-            // AUIPC
+            // AUIPC,Add Upper Imm with PC and store to a reg
             OPCODE_AUIPC: begin
                 reg_write   = 1'b1;
                 imm_type    = IMM_U;
@@ -220,6 +257,8 @@ module ID (
                 imm_type    = IMM_I;
                 wb_sel      = WB_ALU;
                 use_pc_add  = 1'b0;
+                load_size = 2'b10;
+                load_signed = 1'b1;
             end
         endcase
     end

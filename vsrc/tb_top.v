@@ -18,7 +18,7 @@ module tb_top;
         .x4(x4)
     );
 
-    // Clock generator: 10ns period
+    // Clock generator: 10ns period,100Mhz
     always #5 clk = ~clk;
 
     initial begin
