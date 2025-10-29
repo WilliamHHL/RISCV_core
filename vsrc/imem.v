@@ -5,15 +5,16 @@ module imem(
     input  [31:0] addr,
     output [31:0] data
 );
-
-    reg [31:0] mem [0:32767];//128KB = 32768 words
+    // 128 KiB bytes
+    reg [7:0] mem [0:131071];
     `ifndef SYNTHESIS
     initial begin
+        $display("IMEM: loading program.hex (byte-wide) ...");
         $readmemh("program.hex", mem);
+        $display("IMEM: load done.");
     end
     `endif
-    wire [31:0] offset = addr >> 2;   // convert byte address (PC) to 32-bit word index (addr/4)
-    assign data = mem[offset[14:0]];  // 15-bit index: 2^15 = 32768 words; mask high bits to avoid out-of-range
-  
 
+    // little-endian assemble: addr is byte address (PC)
+    assign data = { mem[addr + 3], mem[addr + 2], mem[addr + 1], mem[addr + 0] };
 endmodule
