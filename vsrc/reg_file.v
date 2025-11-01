@@ -19,7 +19,7 @@ module reg_file (
     integer i;
 
     // Read ports (combinational)
-    assign rs1_data   = (rs1_addr == 5'd0) ? 32'b0 : regs[rs1_addr];
+    assign rs1_data   = (rs1_addr == 5'd0) ? 32'b0 : regs[rs1_addr];//need adjustment when pipeline,as may have the RAW/WAR hazard
     assign rs2_data   = (rs2_addr == 5'd0) ? 32'b0 : regs[rs2_addr];
     assign regs_out1  = regs[1];
     assign regs_out2  = regs[2];
