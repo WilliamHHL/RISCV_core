@@ -4,7 +4,7 @@ module tb_top;
 
     reg clk = 0;
     reg rst = 1;
-    wire [31:0] pc, instr, x1, x2, x3, x4;
+    wire [31:0] pc, instr;//,x1, x2, x3, x4;
     wire ebreak_pulse;
 
     top uut (
@@ -12,10 +12,10 @@ module tb_top;
         .rst(rst),
         .pc(pc),
         .instr(instr),
-        .x1(x1),
+        /*.x1(x1),
         .x2(x2),
         .x3(x3),
-        .x4(x4),
+        .x4(x4),*/
         .ebreak_pulse(ebreak_pulse)
     );
 

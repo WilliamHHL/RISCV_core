@@ -3,10 +3,10 @@ module top (
     input rst,
     output [31:0] pc,
     output [31:0] instr,
-    output [31:0] x1,
+    /*output [31:0] x1,
     output [31:0] x2,
     output [31:0] x3,
-    output [31:0] x4,
+    output [31:0] x4,*/
     output  ebreak_pulse
 );
 
@@ -32,7 +32,7 @@ module top (
 
     // Regfile read data (future: to be registered into ID/EX)
     wire [31:0] rs1_data, rs2_data;
-    wire [31:0] regs_out1, regs_out2, regs_out3, regs_out4;
+    //wire [31:0] regs_out1, regs_out2, regs_out3, regs_out4;
 
     // Immgen (future: to be registered into ID/EX)
     wire [31:0] imm;
@@ -59,10 +59,10 @@ module top (
     wire        wb_wen;
 
     // Exposed registers for observation
-    assign x1 = regs_out1;
+    /*assign x1 = regs_out1;
     assign x2 = regs_out2;
     assign x3 = regs_out3;
-    assign x4 = regs_out4;
+    assign x4 = regs_out4;*/
 
     // PC register (IF)
     PC_reg u_PC (
@@ -117,11 +117,11 @@ module top (
         .rd_data(wb_data),  // final write-back data (after CSR override)
         .rd_wen(wb_wen),    // final write-enable (after CSR override)
         .rs1_data(rs1_data),
-        .rs2_data(rs2_data),
-        .regs_out1(regs_out1),
+        .rs2_data(rs2_data)
+        /*.regs_out1(regs_out1),
         .regs_out2(regs_out2),
         .regs_out3(regs_out3),
-        .regs_out4(regs_out4)
+        .regs_out4(regs_out4)*/
     );
 
     // Immediate generator

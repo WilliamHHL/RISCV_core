@@ -7,11 +7,11 @@ module reg_file (
     input [31:0] rd_data,
     input rd_wen,
     output [31:0] rs1_data,
-    output [31:0] rs2_data,
-    output [31:0] regs_out1,
+    output [31:0] rs2_data
+    /*output [31:0] regs_out1,
     output [31:0] regs_out2,
     output [31:0] regs_out3,
-    output [31:0] regs_out4
+    output [31:0] regs_out4*/
 );
     
     reg [31:0] regs [0:31];
@@ -19,12 +19,12 @@ module reg_file (
     integer i;
 
     // Read ports (combinational)
-    assign rs1_data   = (rs1_addr == 5'd0) ? 32'b0 : regs[rs1_addr];//need adjustment when pipeline,as may have the RAW/WAR hazard
+    assign rs1_data   = (rs1_addr == 5'd0) ? 32'b0 : regs[rs1_addr];
     assign rs2_data   = (rs2_addr == 5'd0) ? 32'b0 : regs[rs2_addr];
-    assign regs_out1  = regs[1];
+    /*assign regs_out1  = regs[1];
     assign regs_out2  = regs[2];
     assign regs_out3  = regs[3];
-    assign regs_out4  = regs[4];
+    assign regs_out4  = regs[4];*/
 
     // Write port (writes on rising edge)
     always @(posedge clk) begin
