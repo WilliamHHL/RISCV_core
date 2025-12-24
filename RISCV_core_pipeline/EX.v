@@ -34,7 +34,7 @@ module EX (
     assign pc_plus4     = pc + 32'd4;
     assign auipc_result = pc + imm;
 
-    wire [4:0] shamt = alu_rs2_imm ? imm[4:0] : rs2_data[4:0];
+    wire [4:0] shamt = alu_rs2_imm ? imm[4:0] : rs2_data[4:0];//shamt=shift amount
 
     always @(*) begin
         case (alu_op)
@@ -86,7 +86,7 @@ module EX (
         end
 
         if (jalr) begin
-             branch_target = (rs1_data + imm) & 32'hFFFF_FFFE; // JALR target
+            branch_target = (rs1_data + imm) & 32'hFFFF_FFFE; // JALR target
             branch_taken  = 1'b1;
         end
     end

@@ -10,19 +10,20 @@ module top (
     wire [31:0] pc_next;
     PC_reg u_PC (
         .clk(clk),
-        .rst_sync(rst),
+        .rst(rst),
         .pc(pc),
         .pc_next(pc_next)
     );
-
+    assign instr = if_instr; // expose current fetched instruction for observation
     // IF: instruction fetch (synchronous in this version)
-    wire [31:0] if_instr;
+    wire [31:0] if_instr,if_pc;
     IF u_IF (
         .clk(clk),
         .pc(pc),
+        .if_pc(if_pc),
         .instr(if_instr)
     );
-    assign instr = if_instr; // expose current fetched instruction for observation
+  
 
     // IF/ID pipeline register
     // - Handles stall and flush from hazard/branch unit
@@ -34,7 +35,7 @@ module top (
         .rst(rst),
         .id_stall(id_stall),
         .ifid_flush(ifid_flush),
-        .if_pc(pc),
+        .if_pc(if_pc),
         .if_instr(if_instr),
         .id_pc(id_pc),
         .id_instr(id_instr)
@@ -107,7 +108,7 @@ module top (
 
     // CSR read in ID; carried down to WB where it overrides normal WB when hit
     reg [63:0] cycle_cnt; // mcycle
-    always @(posedge clk or posedge rst) begin
+    always @(posedge clk /*or posedge rst*/) begin
         if (rst) cycle_cnt <= 64'd0;
         else     cycle_cnt <= cycle_cnt + 1'b1;
     end
@@ -225,12 +226,11 @@ module top (
         ex_use_pc_add ? ex_auipc_result :
         (ex_wb_sel == 2'd0) ? ex_alu_result :
         (ex_wb_sel == 2'd2) ? ex_pc_plus4 :
-        (ex_wb_sel == 2'd3) ? ex_imm :
-        ex_alu_result;
+        (ex_wb_sel == 2'd3) ? ex_imm : ex_alu_result;
 
     // Next PC selection and IF stall hold
-    wire [31:0] pc_redirect = ex_redirect_taken ? ex_branch_target : ex_pc_plus4;
-    assign pc_next = if_stall ? pc : pc_redirect;
+    wire [31:0] pc_redirect = ex_redirect_taken ? ex_branch_target : ex_pc_plus4;//the ex_pc_plus_4 should be (pc + 32'd4),as it should be the top pc;
+    assign pc_next = if_stall ? pc : pc_redirect;//pc_redirect;
 
     // EX/MEM pipeline register: carries ALU result, store data, and WB/MEM controls
     wire [31:0] mem_pc, mem_alu_result, mem_rs2_val_for_store, mem_wb_candidate;
@@ -374,19 +374,20 @@ module top (
     end
     assign ebreak_pulse = ebreak_d;
     assign ecall_pulse  = ecall_d; 
-    /*always @(posedge clk) begin
+    /* always @(posedge clk) begin
         if (!rst) begin
             if (ecall_d) begin
                 $display("ECALL at PC=%08x", pc);
                 $finish;
             end
-            if (ebreak_pulse) begin
+            if (ebreak_d) begin
                 $display("EBREAK at PC=%08x", pc);
                 $finish;
             end
         end
     end
     */
+    
     
     //assign ebreak_pulse = 1'b0;
 

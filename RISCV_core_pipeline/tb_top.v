@@ -3,7 +3,7 @@
 module tb_top;
 
     reg clk = 0;
-    reg rst = 1;
+    reg rst = 0;
 
     // DUT observation ports
     wire [31:0] pc, instr;   // IF stage observation ports from top.v
@@ -23,13 +23,30 @@ module tb_top;
     // 40 MHz clock (25 ns)
     always #12.5 clk = ~clk;
 
-    // Latch previous-cycle ID-stage PC so it aligns with decode pulses
-    reg [31:0] id_pc_q;
-    always @(posedge clk or posedge rst) begin
-        if (rst) id_pc_q <= 32'h0;
-        else     id_pc_q <= tb_top.uut.id_pc; // hierarchical reference into top
+/*
+   always @(posedge clk) begin
+    if (!rst &&
+        tb_top.uut.wb_wen_final &&
+        tb_top.uut.wb_rd_addr == 5'd1) begin
+        $display("WB x1: time=%0t  ex_pc=%08x  wb_data_final=%08x",
+                 $time,
+                 tb_top.uut.ex_pc,
+                 tb_top.uut.wb_data_final);
     end
+end
+*/
 
+always @(posedge clk) begin
+    $display("cycle=%0d pc=%08x id_pc=%08x ex_pc=%08x mem_pc=%08x wb_rd=%0d wb_wen=%b wb_data=%08x ex_redirect=%b ex_target=%08x if_stall=%b id_stall=%b flush_ifid=%b flush_idex=%b",
+             tb_top.uut.u_PC.dbg_cnt, tb_top.uut.pc, tb_top.uut.id_pc, tb_top.uut.ex_pc, tb_top.uut.mem_pc, tb_top.uut.wb_rd_addr, tb_top.uut.wb_wen_final, tb_top.uut.wb_data_final,
+             tb_top.uut.ex_redirect_taken, tb_top.uut.ex_branch_target, tb_top.uut.if_stall, tb_top.uut.id_stall, tb_top.uut.ifid_flush, tb_top.uut.idex_flush);
+end
+
+always @(posedge clk) begin
+    #0;
+    $display("time=%0t ps  dbg_cnt=%0d pc(top)=%08x", 
+             $time, tb_top.uut.u_PC.dbg_cnt, pc);
+end
     // Task to dump register file contents
     task dump_regs;
         integer i;
@@ -40,6 +57,7 @@ module tb_top;
         end
     endtask
 
+    
     initial begin
         integer i;
         reg [63:0] cycles;
@@ -50,35 +68,37 @@ module tb_top;
 
         // Reset
         rst = 1;
-        repeat (4) @(posedge clk);
+        repeat (2) @(posedge clk);
         rst = 0;
 
         // Short trace to sanity-check stage alignment
         for (i = 0; i < 12; i = i + 1) begin
             @(posedge clk);
-            #0;
+            //#0;
             $display("ID: pc=%08x instr=%08x | IF.port: pc=%08x instr=%08x",
                 tb_top.uut.id_pc,
                 tb_top.uut.id_instr,
-                pc, instr
+                tb_top.uut.if_pc, tb_top.uut.if_instr
             );
         end
 
         // Run until ECALL or EBREAK (with reasonable timeout)
         cycles = 0;
-        while (cycles < 64'd50_000_000) begin
-            @(posedge clk);
+        while (cycles < 64'd50) begin //original value for coremark is 50_000_000
+            @(posedge clk); 
             #0; // sample after NBA updates
 
             if (ecall_pulse) begin
                 $display("ECALL  at ID.pc=%08x | IF.pc=%08x after %0d cycles",
-                         id_pc_q, pc, cycles);
+                         tb_top.uut.id_pc, pc, cycles);
                 dump_regs();
                 $finish;
             end
             if (ebreak_pulse) begin
-                $display("EBREAK at ID.pc=%08x | IF.pc=%08x after %0d cycles",// real finished ebreak's pc is at pc-20000,as idk why the pc wil shify in the tb
-                         id_pc_q, pc, cycles);
+                $display("EBREAK at ID.pc=%08x | IF.pc=%08x after %0d cycles",
+                // real finished ebreak's pc is at pc-20000,
+                //as idk why the pc wil shift in the tb,if have any doubts,just use the ebreak inside the top.v
+                         tb_top.uut.id_pc, pc, cycles);
                 dump_regs();
                 $finish;
             end
