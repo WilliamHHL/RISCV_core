@@ -11,6 +11,7 @@
 
 - Finished RTL coding
 - Functional verification completed
+- Coremark score = 1.15/Mhz (via verilator simulation)
 - OpenLane flow completed
 - CTS STA estimated Fmax: **35 MHz**
 - Area: **1000 µm × 1000 µm**
