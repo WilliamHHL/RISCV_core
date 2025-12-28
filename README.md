@@ -14,6 +14,7 @@
 - OpenLane flow completed
 - CTS STA estimated Fmax: **35 MHz**
 - Area: **1000 µm × 1000 µm**
+- With two 1KB on board SRAM (imem/dmem)  
 
 ---
 
