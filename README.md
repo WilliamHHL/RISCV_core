@@ -14,7 +14,11 @@
 - OpenLane flow completed
 - CTS STA estimated Fmax: **35 MHz**
 - Area: **1000 µm × 1000 µm**
-- With two 1KB on board SRAM (imem/dmem)  
+- With two 1 KB on‑board SRAMs (IMEM/DMEM)
+
+#### Single‑Cycle RV32I GDS View
+
+![Single‑Cycle RV32I GDS](Single_Cycle_GDS.png)
 
 ---
 
@@ -40,3 +44,5 @@
 - Planned features: partial 2‑issue front‑end and extended hazard/forwarding logic
 
 ---
+
+**Progress:** To be continued…
