@@ -229,7 +229,7 @@ module top (
         (ex_wb_sel == 2'd3) ? ex_imm : ex_alu_result;
 
     // Next PC selection and IF stall hold
-    wire [31:0] pc_redirect = ex_redirect_taken ? ex_branch_target : pc + 32'd4;//the ex_pc_plus_4 should be (pc + 32'd4),as it should be the top pc;
+    wire [31:0] pc_redirect = ex_redirect_taken ? ex_branch_target : pc + 32'd4;//the ex_pc_plus_4 become (pc + 32'd4),as it should be the top pc;
     assign pc_next = if_stall ? pc : pc_redirect;//pc_redirect;
 
     // EX/MEM pipeline register: carries ALU result, store data, and WB/MEM controls
