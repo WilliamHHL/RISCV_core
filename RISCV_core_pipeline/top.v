@@ -6,6 +6,8 @@ module top (
     output  ebreak_pulse,
     output ecall_pulse
 );
+
+    
     // IF: PC register and next-PC selection happens later (EX redirect + stall)
     wire [31:0] pc_next;
     PC_reg u_PC (
@@ -190,9 +192,42 @@ module top (
         .ex_csr_data(ex_csr_data)
     );
 
+    // Forwarding unit controls
+    wire [1:0] forward_a, forward_b;
+
+    forwarding_unit u_forwarding (
+        .ex_rs1_addr     (ex_rs1_addr),
+        .ex_rs2_addr     (ex_rs2_addr),
+        .exmem_reg_write (mem_reg_write),
+        .exmem_rd        (mem_rd_addr),
+        // Use final WB write enable for MEM/WB, including CSR hits
+        .memwb_reg_write (wb_wen_final),
+        .memwb_rd        (wb_rd_addr),
+        .forward_a       (forward_a),
+        .forward_b       (forward_b)
+    );
+
+
+    // Forwarded values for rs1, rs2 before IMM selection
+    wire [31:0] ex_rs1_fwd;
+    wire [31:0] ex_rs2_fwd;
+
+    // Data sources:
+    // - ID/EX: ex_rs* _val
+    // - EX/MEM: mem_wb_candidate (ALU/AUIPC/JAL data already selected)
+    // - MEM/WB: wb_data_final   (final value written back, including CSR)
+    assign ex_rs1_fwd = (forward_a == 2'b10) ? mem_wb_candidate : // from EX_MEM forward to EX
+                        (forward_a == 2'b01) ? wb_data_final : ex_rs1_val;//from MEM_WB to EX
+
+    assign ex_rs2_fwd = (forward_b == 2'b10) ? mem_wb_candidate :
+                        (forward_b == 2'b01) ? wb_data_final : ex_rs2_val;
+
+    // Final ALU operands
+    wire [31:0] ex_rs1_val_to_alu = ex_rs1_fwd;
+    wire [31:0] ex_rs2_val_to_alu = ex_alu_rs2_is_imm ? ex_imm : ex_rs2_fwd;
     // EX: operand selection without forwarding
-    wire [31:0] ex_rs1_val_to_alu = ex_rs1_val;
-    wire [31:0] ex_rs2_val_to_alu = ex_alu_rs2_is_imm ? ex_imm : ex_rs2_val;
+    /*wire [31:0] ex_rs1_val_to_alu = ex_rs1_val;
+    wire [31:0] ex_rs2_val_to_alu = ex_alu_rs2_is_imm ? ex_imm : ex_rs2_val;*/
 
     // EX: ALU, branch/jump resolution (produces redirect and next PC+4/AUIPC)
     wire [31:0] ex_pc_plus4, ex_auipc_result;
@@ -224,12 +259,12 @@ module top (
     // - wb_sel: 00 ALU, 10 PC+4 (JAL/JALR link), 11 IMM (LUI)
     wire [31:0] ex_wb_candidate =
         ex_use_pc_add ? ex_auipc_result :
-        (ex_wb_sel == 2'd0) ? ex_alu_result :
-        (ex_wb_sel == 2'd2) ? ex_pc_plus4 :
-        (ex_wb_sel == 2'd3) ? ex_imm : ex_alu_result;
+        (ex_wb_sel == 2'b0) ? ex_alu_result :
+        (ex_wb_sel == 2'b10) ? ex_pc_plus4 :
+        (ex_wb_sel == 2'b11) ? ex_imm : ex_alu_result;
 
     // Next PC selection and IF stall hold
-    wire [31:0] pc_redirect = ex_redirect_taken ? ex_branch_target : pc + 32'd4;//the ex_pc_plus_4 become (pc + 32'd4),as it should be the top pc;
+    wire [31:0] pc_redirect = ex_redirect_taken ? ex_branch_target : pc + 32'd4;//the ex_pc_plus_4 become (pc + 32'd4),as it should be the top pc
     assign pc_next = if_stall ? pc : pc_redirect;//pc_redirect;
 
     // EX/MEM pipeline register: carries ALU result, store data, and WB/MEM controls
@@ -295,6 +330,9 @@ module top (
     wire        wb_reg_write, wb_csr_hit;
     wire [1:0]  wb_wb_sel;
 
+    
+
+
     MEM_WB u_mem_wb (
         .clk(clk),
         .rst(rst),
@@ -326,7 +364,7 @@ module top (
     );
 
     // Final write-back signals to regfile
-    wire [31:0] wb_data_final = wb_csr_hit ? wb_csr_data : wb_wb_data_core;
+    wire [31:0] wb_data_final = wb_csr_hit ? wb_csr_data : wb_wb_data_core;//the wb_data_final is connected to the regfile's rd_data
     wire        wb_wen_final  = wb_csr_hit ? 1'b1        : wb_reg_write;
 
     // Hazard unit (stall-only, no forwarding)

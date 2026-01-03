@@ -70,7 +70,7 @@ end
         rst = 1;
         repeat (2) @(posedge clk);
         rst = 0;
-
+    
         // Short trace to sanity-check stage alignment
         for (i = 0; i < 12; i = i + 1) begin
             @(posedge clk);
