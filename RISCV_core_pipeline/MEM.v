@@ -89,13 +89,15 @@ module MEM (
         end
     end
 `endif
-
+/*
     // Synchronous read with 1-cycle latency
     reg        rd_en_q;
     reg [31:0] rd_addr_q;
     reg [1:0]  load_size_q;
     reg        load_signed_q;
     reg [31:0] dmem_off_q;
+
+    
 
     always @(posedge clk) begin
     // Register request for 1-cycle latency
@@ -125,9 +127,47 @@ module MEM (
             // No readable MMIO other than DMEM
             mem_data <= 32'h0000_0000;
         end
+        $display("MEM-RD: pc=%08x rd_en_q=1 off=%08x size=%0d signed=%0d => mem_data=%08x",
+                 tb_top.uut.mem_pc, dmem_off_q, load_size_q, load_signed_q, mem_data); //newly added debug code
     end
     end
-
+*/
+    
+    // Synchronous readv2: data becomes valid AFTER this clock edge
+    always @(posedge clk) begin
+        if (mem_read) begin
+            if (in_dmem) begin
+                case (load_size)
+                    2'b00: mem_data <= load_signed
+                        ? {{24{dmem[dmem_off][7]}}, dmem[dmem_off]}
+                        : {24'b0, dmem[dmem_off]};
+                    2'b01: mem_data <= load_signed
+                        ? {{16{dmem[dmem_off+1][7]}}, dmem[dmem_off+1], dmem[dmem_off]}
+                        : {16'b0, dmem[dmem_off+1], dmem[dmem_off]};
+                    default: mem_data <= { dmem[dmem_off+3], dmem[dmem_off+2], dmem[dmem_off+1], dmem[dmem_off+0] };
+                endcase
+            end else begin
+                mem_data <= 32'h0000_0000;
+            end
+        end
+    end
+    /*// Combinational read (fits 5-stage pipeline)
+    always @(*) begin
+        mem_data = 32'h0000_0000;
+        if (mem_read && in_dmem) begin
+            case (load_size)
+                2'b00: mem_data = load_signed
+                    ? {{24{dmem[dmem_off][7]}}, dmem[dmem_off]}
+                    : {24'b0, dmem[dmem_off]};
+                2'b01: mem_data = load_signed
+                    ? {{16{dmem[dmem_off+1][7]}}, dmem[dmem_off+1], dmem[dmem_off]}
+                    : {16'b0, dmem[dmem_off+1], dmem[dmem_off]};
+                default: mem_data = {
+                    dmem[dmem_off+3], dmem[dmem_off+2], dmem[dmem_off+1], dmem[dmem_off+0]
+                };
+            endcase
+        end
+    end */
     // Sequential write path
     always @(posedge clk) begin
         if (mem_write) begin

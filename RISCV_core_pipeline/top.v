@@ -10,20 +10,37 @@ module top (
     
     // IF: PC register and next-PC selection happens later (EX redirect + stall)
     wire [31:0] pc_next;
+    wire pc_stall;
+    assign pc_stall = if_stall||id_stall;
+    // 1-cycle delayed hold for IF stage
+    reg if_hold;
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            if_hold <= 1'b0;
+        end else begin
+            if_hold <= if_stall;  // 下一拍才真正 hold IF 的輸出
+        end
+    end
+//issue, if use the if_stall, the results seem to be correct, but the instr after the stalling will be eaten
     PC_reg u_PC (
         .clk(clk),
         .rst(rst),
         .pc(pc),
-        .pc_next(pc_next)
+        //.pc_next(pc_next),
+        .pc_stall(pc_stall),
+        .ex_branch_target,
+        .ex_redirect_taken
     );
     assign instr = if_instr; // expose current fetched instruction for observation
     // IF: instruction fetch (synchronous in this version)
     wire [31:0] if_instr,if_pc;
-    IF u_IF (
-        .clk(clk),
-        .pc(pc),
-        .if_pc(if_pc),
-        .instr(if_instr)
+    IF u_if (
+    .clk     (clk),
+    .rst     (rst),
+    .pc      (pc),
+    .if_stall(if_stall),
+    .instr   (if_instr),
+    .if_pc   (if_pc)
     );
   
 
@@ -263,9 +280,9 @@ module top (
         (ex_wb_sel == 2'b10) ? ex_pc_plus4 :
         (ex_wb_sel == 2'b11) ? ex_imm : ex_alu_result;
 
-    // Next PC selection and IF stall hold
-    wire [31:0] pc_redirect = ex_redirect_taken ? ex_branch_target : pc + 32'd4;//the ex_pc_plus_4 become (pc + 32'd4),as it should be the top pc
-    assign pc_next = if_stall ? pc : pc_redirect;//pc_redirect;
+    // Next PC selection:
+   // wire [31:0] pc_redirect = ex_redirect_taken ? ex_branch_target : ex_pc_plus4;//pc + 32'd4;
+    //assign pc_next = pc_redirect; //if_stall ? pc : pc_redirect;
 
     // EX/MEM pipeline register: carries ALU result, store data, and WB/MEM controls
     wire [31:0] mem_pc, mem_alu_result, mem_rs2_val_for_store, mem_wb_candidate;
@@ -280,7 +297,7 @@ module top (
 
         .ex_pc(ex_pc),
         .ex_alu_result(ex_alu_result),
-        .ex_rs2_val_for_store(ex_rs2_val), // store uses RS2 as latched in EX
+        .ex_rs2_val_for_store(ex_rs2_fwd), // store uses RS2 as latched in EX
         .ex_rd_addr(ex_rd_addr),
         .ex_reg_write(ex_reg_write),
         .ex_mem_read(ex_mem_read),
@@ -359,10 +376,17 @@ module top (
     WB u_WB (
         .mem_to_reg(wb_wb_sel == 2'd1),
         .alu_result(wb_wb_candidate),
-        .mem_data(wb_load_data),
+        .mem_data(mem_load_data),//dont use the wb_load_data,it is redundant
         .wb_data(wb_wb_data_core)
     );
-
+    `ifndef SYNTHESIS
+    always @(posedge clk) begin
+        if (!rst && wb_wen_final && (wb_rd_addr != 0)) begin
+            $display("WB: pc=%08x rd=x%0d data=%08x sel=%0d csr_hit=%0d",
+                    mem_pc, wb_rd_addr, wb_data_final, wb_wb_sel, wb_csr_hit);
+        end
+    end
+    `endif
     // Final write-back signals to regfile
     wire [31:0] wb_data_final = wb_csr_hit ? wb_csr_data : wb_wb_data_core;//the wb_data_final is connected to the regfile's rd_data
     wire        wb_wen_final  = wb_csr_hit ? 1'b1        : wb_reg_write;

@@ -5,7 +5,8 @@ module imem(
     input  wire        clk,
     input  wire [31:0] addr,
     output reg  [31:0] data,
-    output reg  [31:0] addr_q
+    input imem_stall
+   // output reg  [31:0] addr_q
 );
     // 128 KiB bytes
     reg [7:0] mem [0:131071];
@@ -20,7 +21,13 @@ module imem(
 
    // reg [31:0] addr_q;
     always @(posedge clk) begin
-        addr_q <= addr;
-        data   <= { mem[addr_q + 3], mem[addr_q + 2], mem[addr_q + 1], mem[addr_q + 0] };
+        if (!imem_stall) begin
+        //addr_q <= addr;
+        data   <= { mem[addr + 3], mem[addr + 2], mem[addr + 1], mem[addr + 0] };
+        end 
+        else begin
+        data <= data;
+        end
+        $display("instr_fetched: %08x",data,"pc: %08x",addr);
     end
 endmodule

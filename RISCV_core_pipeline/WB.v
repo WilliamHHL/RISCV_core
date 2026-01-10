@@ -6,4 +6,5 @@ module WB (
 );
     // Select data to write back to the register file
     assign wb_data = mem_to_reg ? mem_data : alu_result;
+    
 endmodule
