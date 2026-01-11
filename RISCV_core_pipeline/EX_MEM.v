@@ -17,6 +17,7 @@ module EX_MEM (
     input  [31:0] ex_wb_candidate,
     input         ex_csr_hit,
     input  [31:0] ex_csr_data,
+    input      ex_ecall, ex_ebreak, ex_fence,
 
     // To MEM stage
     output reg [31:0] mem_pc,
@@ -32,7 +33,8 @@ module EX_MEM (
     output reg        mem_load_signed,
     output reg [31:0] mem_wb_candidate,
     output reg        mem_csr_hit,
-    output reg [31:0] mem_csr_data
+    output reg [31:0] mem_csr_data,
+    output reg mem_ebreak,mem_ecall,mem_fence
 );
     always @(posedge clk or posedge rst) begin
         if (rst) begin
@@ -50,6 +52,9 @@ module EX_MEM (
             mem_wb_candidate     <= 32'b0;
             mem_csr_hit          <= 1'b0;
             mem_csr_data         <= 32'b0;
+            mem_ebreak          <= 1'b0;
+            mem_ecall          <= 1'b0;
+            mem_fence          <= 1'b0;
         end else begin
             mem_pc               <= ex_pc;
             mem_alu_result       <= ex_alu_result;
@@ -65,6 +70,9 @@ module EX_MEM (
             mem_wb_candidate     <= ex_wb_candidate;
             mem_csr_hit          <= ex_csr_hit;
             mem_csr_data         <= ex_csr_data;
+            mem_ebreak          <= ex_ebreak;
+            mem_ecall          <= ex_ecall;
+            mem_fence          <= ex_fence;
         end
     end
 endmodule

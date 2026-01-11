@@ -21,7 +21,7 @@ module top (
             if_hold <= if_stall;  // 下一拍才真正 hold IF 的輸出
         end
     end
-//issue, if use the if_stall, the results seem to be correct, but the instr after the stalling will be eaten
+
     PC_reg u_PC (
         .clk(clk),
         .rst(rst),
@@ -74,7 +74,7 @@ module top (
     wire       load_signed_d;
     wire [1:0] load_size_d;
     wire [1:0] store_size_d;
-    wire       ecall_d, ebreak_d, fence_d;
+    wire       id_ecall, id_ebreak, id_fence;
 
     ID u_ID (
         .inst(id_instr),
@@ -98,9 +98,9 @@ module top (
         .load_size(load_size_d),
         .load_signed(load_signed_d),
         .store_size(store_size_d),
-        .ecall(ecall_d),
-        .ebreak(ebreak_d),
-        .fence(fence_d)
+        .ecall(id_ecall),
+        .ebreak(id_ebreak),
+        .fence(id_fence)
     );
 
     // Register file reads in ID; writes happen in WB
@@ -150,6 +150,9 @@ module top (
     wire [1:0]  ex_wb_sel, ex_load_size, ex_store_size;
     wire        ex_csr_hit;
     wire [31:0] ex_csr_data;
+    wire       ex_ecall, ex_ebreak, ex_fence;
+
+
 
     ID_EX u_id_ex (
         .clk(clk),
@@ -178,6 +181,9 @@ module top (
         .id_load_signed(load_signed_d),
         .id_load_size(load_size_d),
         .id_store_size(store_size_d),
+        .id_ebreak(id_ebreak),
+        .id_ecall(id_ecall),
+        .id_fence(id_fence),
 
         .id_csr_hit(csr_hit_id),
         .id_csr_data(csr_data_id),
@@ -206,7 +212,11 @@ module top (
         .ex_store_size(ex_store_size),
 
         .ex_csr_hit(ex_csr_hit),
-        .ex_csr_data(ex_csr_data)
+        .ex_csr_data(ex_csr_data),
+        .ex_ebreak(ex_ebreak),
+        .ex_ecall(ex_ecall),
+        .ex_fence(ex_fence)
+
     );
 
     // Forwarding unit controls
@@ -290,11 +300,14 @@ module top (
     wire        mem_reg_write, mem_mem_read, mem_mem_write, mem_load_signed, mem_csr_hit;
     wire [1:0]  mem_wb_sel, mem_load_size, mem_store_size;
     wire [31:0] mem_csr_data;
-
+    wire       mem_ecall, mem_ebreak, mem_fence;
     EX_MEM u_ex_mem (
         .clk(clk),
         .rst(rst),
-
+        
+        .ex_ebreak(ex_ebreak),
+        .ex_ecall(ex_ecall),
+        .ex_fence(ex_fence),
         .ex_pc(ex_pc),
         .ex_alu_result(ex_alu_result),
         .ex_rs2_val_for_store(ex_rs2_fwd), // store uses RS2 as latched in EX
@@ -323,7 +336,10 @@ module top (
         .mem_load_signed(mem_load_signed),
         .mem_wb_candidate(mem_wb_candidate),
         .mem_csr_hit(mem_csr_hit),
-        .mem_csr_data(mem_csr_data)
+        .mem_csr_data(mem_csr_data),
+        .mem_ebreak(mem_ebreak),
+        .mem_ecall(mem_ecall),
+        .mem_fence(mem_fence)
     );
 
     // MEM: data memory access and load data assembly (byte/half/word, sign/zero-extend)
@@ -346,14 +362,15 @@ module top (
     wire [4:0]  wb_rd_addr;
     wire        wb_reg_write, wb_csr_hit;
     wire [1:0]  wb_wb_sel;
-
+    wire       wb_ecall, wb_ebreak, wb_fence;
+    wire ebreak_q,ecall_q,fence_q;
     
 
 
     MEM_WB u_mem_wb (
         .clk(clk),
         .rst(rst),
-
+        .mem_pc(mem_pc),
         .mem_wb_candidate(mem_wb_candidate),
         .mem_load_data(mem_load_data),
         .mem_rd_addr(mem_rd_addr),
@@ -361,6 +378,9 @@ module top (
         .mem_wb_sel(mem_wb_sel),
         .mem_csr_hit(mem_csr_hit),
         .mem_csr_data(mem_csr_data),
+        .mem_ebreak(mem_ebreak),
+        .mem_ecall(mem_ecall),
+        .mem_fence(mem_fence),
 
         .wb_wb_candidate(wb_wb_candidate),
         .wb_load_data(wb_load_data),
@@ -368,7 +388,13 @@ module top (
         .wb_reg_write(wb_reg_write),
         .wb_wb_sel(wb_wb_sel),
         .wb_csr_hit(wb_csr_hit),
-        .wb_csr_data(wb_csr_data)
+        .wb_csr_data(wb_csr_data),
+        .wb_ebreak(wb_ebreak),
+        .wb_ecall(wb_ecall),
+        .wb_fence(wb_fence),
+        .ebreak_q,
+        .ecall_q,
+        .fence_q
     );
 
     // WB: core WB mux (MEM vs ALU-side), then CSR overrides when hit
@@ -424,36 +450,45 @@ module top (
 
 
     // Simulation-only ECALL/EBREAK handling and pulse
-    reg ebreak_q,ecall_q;
+    /*reg ebreak_q,ecall_q;
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             ebreak_q <= 1'b0;
             ecall_q  <= 1'b0;
         end else begin
-            ebreak_q <= ebreak_d;
-            ecall_q  <= ecall_d;
+            ebreak_q <= wb_ebreak;
+            ecall_q  <= wb_ecall;
         end
-    end
-    assign ebreak_pulse = ebreak_d;
-    assign ecall_pulse  = ecall_d; 
-    /* always @(posedge clk) begin
+    end*/
+    assign ebreak_pulse = ebreak_q;
+    assign ecall_pulse  = ecall_q; 
+    always @(posedge clk) begin
         if (!rst) begin
-            if (ecall_d) begin
+            if (ecall_q) begin
                 $display("ECALL at PC=%08x", pc);
                 $finish;
             end
-            if (ebreak_d) begin
+            if (ebreak_q) begin
                 $display("EBREAK at PC=%08x", pc);
+                $display("Final_mem_PC=%08x", mem_pc);
+
                 $finish;
             end
         end
     end
-    */
+    
     
     
     //assign ebreak_pulse = 1'b0;
 
-
+always @(posedge clk) begin
+    if (!rst) begin
+        if (id_instr == 32'h00100393 || id_instr == 32'h00200393) begin
+            $display("ID x7 ADDI: pc=%08x instr=%08x reg_write=%b wb_sel=%0d rd=%0d",
+                     id_pc, id_instr, reg_write_d, wb_sel_d, rd_addr);
+        end
+    end
+end
 
 
 endmodule

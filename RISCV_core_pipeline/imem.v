@@ -5,7 +5,8 @@ module imem(
     input  wire        clk,
     input  wire [31:0] addr,
     output reg  [31:0] data,
-    input imem_stall
+    input imem_stall,
+    input rst
    // output reg  [31:0] addr_q
 );
     // 128 KiB bytes
@@ -24,7 +25,9 @@ module imem(
         if (!imem_stall) begin
         //addr_q <= addr;
         data   <= { mem[addr + 3], mem[addr + 2], mem[addr + 1], mem[addr + 0] };
-        end 
+        end /*if(rst) begin
+        data <= data;
+        end */
         else begin
         data <= data;
         end

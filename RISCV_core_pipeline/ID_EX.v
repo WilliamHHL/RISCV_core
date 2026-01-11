@@ -29,6 +29,7 @@ module ID_EX (
 
     input         id_csr_hit,
     input  [31:0] id_csr_data,
+    input       id_ecall, id_ebreak, id_fence,
 
     // To EX stage
     output reg [31:0] ex_pc,
@@ -55,7 +56,8 @@ module ID_EX (
     output reg [1:0]  ex_store_size,
 
     output reg        ex_csr_hit,
-    output reg [31:0] ex_csr_data
+    output reg [31:0] ex_csr_data,
+    output reg       ex_ecall, ex_ebreak, ex_fence
 );
     always @(posedge clk or posedge rst) begin
         if (rst || idex_flush) begin
@@ -82,6 +84,11 @@ module ID_EX (
             ex_store_size      <= 2'b10;
             ex_csr_hit         <= 1'b0;
             ex_csr_data        <= 32'b0;
+            ex_ebreak          <= 1'b0;
+            ex_ecall          <= 1'b0;
+            ex_fence          <= 1'b0;
+            
+            
         end else begin
             ex_pc              <= id_pc;
             ex_rs1_val         <= id_rs1_val;
@@ -106,6 +113,9 @@ module ID_EX (
             ex_store_size      <= id_store_size;
             ex_csr_hit         <= id_csr_hit;
             ex_csr_data        <= id_csr_data;
+            ex_ebreak          <= id_ebreak;
+            ex_ecall          <= id_ecall;
+            ex_fence          <= id_fence;
         end
     end
 endmodule

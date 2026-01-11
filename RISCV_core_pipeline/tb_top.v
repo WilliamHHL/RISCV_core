@@ -84,7 +84,7 @@ end
 
         // Run until ECALL or EBREAK (with reasonable timeout)
         cycles = 0;
-        while (cycles < 64'd50) begin //original value for coremark is 50_000_000
+        while (cycles < 64'd100) begin //original value for coremark is 50_000_000
             @(posedge clk); 
             #0; // sample after NBA updates
 
