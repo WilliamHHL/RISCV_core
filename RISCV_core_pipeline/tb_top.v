@@ -68,7 +68,7 @@ end
 
         // Reset
         rst = 1;
-        repeat (2) @(posedge clk);
+        repeat (1) @(posedge clk);
         rst = 0;
     
         // Short trace to sanity-check stage alignment

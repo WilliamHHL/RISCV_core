@@ -1,6 +1,8 @@
 module hazard_unit (
     input  wire [4:0] id_rs1,
     input  wire [4:0] id_rs2,
+    input clk,
+    input rst,
 
     // ID/EX (EX stage)
     input  wire       idex_mem_read,
@@ -41,7 +43,21 @@ module hazard_unit (
     // Flushing:
     // - on load-use, bubble EX by flushing ID/EX (once)
     // - on redirect, flush IF/ID and ID/EX
-    assign flush_ifid = ex_redirect;                 // kill wrong-path instr in IF/ID
+    //assign flush_ifid = ex_redirect;                 // kill wrong-path instr in IF/ID
+    reg flush_ifid_q;
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            flush_ifid_q <= 1'b0;
+        end else begin
+            if (ex_redirect)       // cycle 0: branch taken
+                flush_ifid_q <= 1'b1;
+            else if (flush_ifid_q) // cycle 1 after redirect
+                flush_ifid_q <= 1'b0;
+        end
+    end
+
+    assign flush_ifid = ex_redirect | flush_ifid_q;
     assign flush_idex = ex_redirect || load_use_hazard; // kill EX instr on redirect or load-use
 
 endmodule

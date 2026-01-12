@@ -12,6 +12,7 @@ module IF_ID (
         if (rst || ifid_flush) begin
             id_pc    <= 32'b0;
             id_instr <= 32'h00000013; // NOP
+            
         end else if (!id_stall) begin
             id_pc    <= if_pc;
             id_instr <= if_instr;

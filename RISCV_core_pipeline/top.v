@@ -12,6 +12,8 @@ module top (
     wire [31:0] pc_next;
     wire pc_stall;
     assign pc_stall = if_stall||id_stall;
+
+    /*
     // 1-cycle delayed hold for IF stage
     reg if_hold;
     always @(posedge clk or posedge rst) begin
@@ -21,15 +23,15 @@ module top (
             if_hold <= if_stall;  // 下一拍才真正 hold IF 的輸出
         end
     end
-
+    */
     PC_reg u_PC (
         .clk(clk),
         .rst(rst),
         .pc(pc),
         //.pc_next(pc_next),
         .pc_stall(pc_stall),
-        .ex_branch_target,
-        .ex_redirect_taken
+        .ex_branch_target(ex_branch_target),
+        .ex_redirect_taken(ex_redirect_taken)
     );
     assign instr = if_instr; // expose current fetched instruction for observation
     // IF: instruction fetch (synchronous in this version)
@@ -38,9 +40,10 @@ module top (
     .clk     (clk),
     .rst     (rst),
     .pc      (pc),
-    .if_stall(if_stall),
+    .if_stall(pc_stall),
     .instr   (if_instr),
-    .if_pc   (if_pc)
+    .if_pc   (if_pc),
+    .if_flush(ifid_flush)
     );
   
 
@@ -422,6 +425,8 @@ module top (
         // ID stage sources
         .id_rs1 (rs1_addr),
         .id_rs2 (rs2_addr),
+        .clk(clk),
+        .rst(rst),
 
         // ID/EX (EX stage current)
         .idex_mem_read   (ex_mem_read),

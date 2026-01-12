@@ -22,8 +22,7 @@ always @(posedge clk) begin
         pc      <= ex_branch_target;
         dbg_cnt <= dbg_cnt + 1'b1;
         `ifndef SYNTHESIS
-        $display("PC_REG BR  : time=%0t pc_before=%08x pc_after=%08x",
-                 $time, pc_before, pc);
+        $display("PC_REG BR  : ... pc_before=%08x pc_next=%08x", pc_before, ex_branch_target);
         `endif
     end
     else if (!pc_stall) begin
