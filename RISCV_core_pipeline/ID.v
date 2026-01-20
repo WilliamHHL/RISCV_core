@@ -101,6 +101,7 @@ module ID (
         ecall       = 1'b0;
         ebreak      = 1'b0;
         fence       = 1'b0;
+        store_size = 2'b10;//SW
         case (opcode)
             // I-type ALU
             OPCODE_OP_IMM: begin

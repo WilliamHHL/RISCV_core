@@ -405,9 +405,10 @@ module top (
     WB u_WB (
         .mem_to_reg(wb_wb_sel == 2'd1),
         .alu_result(wb_wb_candidate),
-        .mem_data(mem_load_data),//dont use the wb_load_data,it is redundant
+        .mem_data(mem_load_data),//dont use the wb_load_data:dmem timing
         .wb_data(wb_wb_data_core)
     );
+    /*
     `ifndef SYNTHESIS
     always @(posedge clk) begin
         if (!rst && wb_wen_final && (wb_rd_addr != 0)) begin
@@ -416,6 +417,7 @@ module top (
         end
     end
     `endif
+    */
     // Final write-back signals to regfile
     wire [31:0] wb_data_final = wb_csr_hit ? wb_csr_data : wb_wb_data_core;//the wb_data_final is connected to the regfile's rd_data
     wire        wb_wen_final  = wb_csr_hit ? 1'b1        : wb_reg_write;
@@ -481,11 +483,23 @@ module top (
             end
         end
     end
-    
-    
+  /*  
+    // 在 always @(posedge clk) 中添加
+always @(posedge clk) begin
+    if (!rst) begin
+        // 追踪 lh 指令在 EX 阶段的转发情况
+        if (ex_mem_read && ex_rd_addr == 5'd14) begin  // lh x14 在 EX
+            $display("[T=%0t] LH@EX: rs1_addr=%0d forward_a=%b", $time, ex_rs1_addr, forward_a);
+            $display("        WB: rd=%0d reg_wr=%b wb_sel=%0d wb_data=%08x", 
+                     wb_rd_addr, wb_reg_write, wb_wb_sel, wb_data_final);
+            $display("        MEM: rd=%0d reg_wr=%b mem_cand=%08x",
+                     mem_rd_addr, mem_reg_write, mem_wb_candidate);
+        end
+    end
+end*/
     
     //assign ebreak_pulse = 1'b0;
-
+/*
 always @(posedge clk) begin
     if (!rst) begin
         if (id_instr == 32'h00100393 || id_instr == 32'h00200393) begin
@@ -495,5 +509,14 @@ always @(posedge clk) begin
     end
 end
 
-
+always @(posedge clk) begin
+    if (!rst && ex_branch) begin
+        $display("[BRANCH] pc=%08x rs1=%0d rs2=%0d fwd_a=%b fwd_b=%b",
+                 ex_pc, ex_rs1_addr, ex_rs2_addr, forward_a, forward_b);
+        $display("         rs1_val=%08x rs2_val=%08x alu_rs2_imm=%b",
+                 ex_rs1_val_to_alu, ex_rs2_val_to_alu, ex_alu_rs2_is_imm);
+        $display("         mem_rd=%0d mem_cand=%08x wb_rd=%0d wb_data=%08x",
+                 mem_rd_addr, mem_wb_candidate, wb_rd_addr, wb_data_final);
+    end
+end*/
 endmodule

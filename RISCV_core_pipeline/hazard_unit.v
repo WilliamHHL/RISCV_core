@@ -58,6 +58,6 @@ module hazard_unit (
     end
 
     assign flush_ifid = ex_redirect | flush_ifid_q;
-    assign flush_idex = ex_redirect || load_use_hazard; // kill EX instr on redirect or load-use
+    assign flush_idex = ex_redirect || load_use_hazard ;//|| flush_ifid; // kill EX instr on redirect or load-use
 
 endmodule

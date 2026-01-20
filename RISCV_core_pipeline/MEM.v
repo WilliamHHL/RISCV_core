@@ -150,7 +150,7 @@ module MEM (
                 mem_data <= 32'h0000_0000;
             end
         end
-    end
+    end 
     /*// Combinational read (fits 5-stage pipeline)
     always @(*) begin
         mem_data = 32'h0000_0000;

@@ -35,18 +35,41 @@ module tb_top;
     end
 end
 */
-
+/*
 always @(posedge clk) begin
-    $display("cycle=%0d pc=%08x id_pc=%08x ex_pc=%08x mem_pc=%08x wb_rd=%0d wb_wen=%b wb_data=%08x ex_redirect=%b ex_target=%08x if_stall=%b id_stall=%b flush_ifid=%b flush_idex=%b",
-             tb_top.uut.u_PC.dbg_cnt, tb_top.uut.pc, tb_top.uut.id_pc, tb_top.uut.ex_pc, tb_top.uut.mem_pc, tb_top.uut.wb_rd_addr, tb_top.uut.wb_wen_final, tb_top.uut.wb_data_final,
+    $display("cycle=%0d if_pc=%08x id_pc=%08x ex_pc=%08x mem_pc=%08x wb_rd=%0d wb_wen=%b wb_data=%08x ex_redirect=%b ex_target=%08x if_stall=%b id_stall=%b flush_ifid=%b flush_idex=%b",
+             tb_top.uut.u_PC.dbg_cnt, tb_top.uut.if_pc, tb_top.uut.id_pc, tb_top.uut.ex_pc, tb_top.uut.mem_pc, tb_top.uut.wb_rd_addr, tb_top.uut.wb_wen_final, tb_top.uut.wb_data_final,
              tb_top.uut.ex_redirect_taken, tb_top.uut.ex_branch_target, tb_top.uut.if_stall, tb_top.uut.id_stall, tb_top.uut.ifid_flush, tb_top.uut.idex_flush);
 end
+*/
+reg [31:0] stuck_pc;
+reg [31:0] stuck_cnt;
 
 always @(posedge clk) begin
-    #0;
-    $display("time=%0t ps  dbg_cnt=%0d pc(top)=%08x", 
-             $time, tb_top.uut.u_PC.dbg_cnt, pc);
+    if (rst) begin
+        stuck_pc  <= 32'hffffffff;
+        stuck_cnt <= 32'd0;
+    end else begin
+        if (uut.mem_pc == stuck_pc) begin
+            stuck_cnt <= stuck_cnt + 1;
+        end else begin
+            stuck_pc  <= uut.mem_pc;
+            stuck_cnt <= 32'd0;
+        end
+
+        if (stuck_cnt == 32'd2000000) begin
+            $display("WARNING: mem_pc=%08x seen for 2M cycles, likely stuck", stuck_pc);
+            $finish;
+        end
+    end
 end
+/*
+always @(posedge clk) begin
+    #0;
+    $display("time=%0t ps dbg_cnt=%0d pc=%08x instr=%08x", 
+         $time, tb_top.uut.u_PC.dbg_cnt, tb_top.uut.if_pc, tb_top.uut.if_instr);
+end 
+*/
     // Task to dump register file contents
     task dump_regs;
         integer i;
@@ -63,8 +86,8 @@ end
         reg [63:0] cycles;
 
         // Wave dump
-        $dumpfile("wave.vcd");
-        $dumpvars(0, tb_top);
+        //$dumpfile("wave.vcd");
+        //$dumpvars(0, tb_top);
 
         // Reset
         rst = 1;
@@ -72,7 +95,7 @@ end
         rst = 0;
     
         // Short trace to sanity-check stage alignment
-        for (i = 0; i < 12; i = i + 1) begin
+        for (i = 0; i < 60; i = i + 1) begin
             @(posedge clk);
             //#0;
             $display("ID: pc=%08x instr=%08x | IF.port: pc=%08x instr=%08x",
@@ -84,7 +107,7 @@ end
 
         // Run until ECALL or EBREAK (with reasonable timeout)
         cycles = 0;
-        while (cycles < 64'd100) begin //original value for coremark is 50_000_000
+        while (cycles < 64'd50_000_000_000_000_000) begin //original value for coremark is 50_000_000
             @(posedge clk); 
             #0; // sample after NBA updates
 

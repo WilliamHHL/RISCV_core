@@ -7,7 +7,7 @@ module PC_reg(
     input  [31:0] ex_branch_target
 );
 
-reg [7:0]  dbg_cnt;
+reg [31:0]  dbg_cnt;
 reg [31:0] pc_before;  // debug purpose
 
 always @(posedge clk) begin
@@ -15,22 +15,22 @@ always @(posedge clk) begin
 
     if (rst) begin
         pc      <= 32'b0;
-        dbg_cnt <= 8'd0;
+        dbg_cnt <= 32'd0;
     end
     // branch/jump
     else if (ex_redirect_taken) begin
         pc      <= ex_branch_target;
         dbg_cnt <= dbg_cnt + 1'b1;
         `ifndef SYNTHESIS
-        $display("PC_REG BR  : ... pc_before=%08x pc_next=%08x", pc_before, ex_branch_target);
+        //$display("PC_REG BR  : ... pc_before=%08x pc_next=%08x", pc_before, ex_branch_target);
         `endif
     end
     else if (!pc_stall) begin
         pc      <= pc + 4;   // step,also equal to branch prediction: always not taken
         dbg_cnt <= dbg_cnt + 1'b1;
         `ifndef SYNTHESIS
-        $display("PC_REG STEP: time=%0t pc_before=%08x pc_after=%08x pc_stall=%b",
-                 $time, pc_before, pc, pc_stall);
+        //$display("PC_REG STEP: time=%0t pc_before=%08x pc_after=%08x pc_stall=%b",
+          //       $time, pc_before, pc, pc_stall);
         `endif
     end
     else begin
@@ -38,8 +38,8 @@ always @(posedge clk) begin
         dbg_cnt <= dbg_cnt + 1'b1;
         pc <= pc;
         `ifndef SYNTHESIS
-        $display("PC_REG HOLD: time=%0t pc_before=%08x pc_after=%08x pc_stall=%b",
-                 $time, pc_before, pc, pc_stall);
+        //$display("PC_REG HOLD: time=%0t pc_before=%08x pc_after=%08x pc_stall=%b",
+        //         $time, pc_before, pc, pc_stall);
         `endif
     end
 end
