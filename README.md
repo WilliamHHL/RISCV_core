@@ -28,8 +28,10 @@
 - Converted single‑cycle CPU to a **5‑stage pipeline**
 - Added pipeline registers
 - Implemented bypass logic in the register file
+- Implemented Forwarding Unit
+- Implemented Hazard_unit for load-use hazard
 - Initial Functional Verification Finsihed
-- Pass Coremark benchmarking. Coremark/Mhz = 0.7 (IPC dropped due to the penalty of branch flushing etc.)
+- Passed Coremark benchmarking. Coremark/Mhz = 0.7 (IPC dropped due to the penalty of branch flushing, but the Fmax would cover the IPC drop, so the absolute performance should be higher)
 - Working on the OpenLane Flow 
 ---
 
