@@ -11,7 +11,7 @@
 
 - Finished RTL coding
 - Functional verification completed
-- Coremark score = 1.15/Mhz (via verilator simulation)
+- Coremark/Mhz = 1.15 (via verilator simulation)
 - OpenLane flow completed
 - CTS STA estimated Fmax: **35 MHz**
 - Area: **1000 µm × 1000 µm**
@@ -28,8 +28,9 @@
 - Converted single‑cycle CPU to a **5‑stage pipeline**
 - Added pipeline registers
 - Implemented bypass logic in the register file
-- Currently working on the **hazard unit**
-
+- Initial Functional Verification Finsihed
+- Pass Coremark benchmarking. Coremark/Mhz = 0.7 (IPC dropped due to the penalty of branch flushing etc.)
+- Working on the OpenLane Flow 
 ---
 
 ### Version 3 – 5‑Stage Pipeline RV32I with Cache
