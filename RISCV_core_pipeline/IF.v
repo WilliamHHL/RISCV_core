@@ -3,9 +3,14 @@ module IF (
     input         rst,
     input  [31:0] pc,
     input         if_stall,
+
+    input         fetch_pred_taken,
+    input  [31:0] fetch_pred_target,
+
     output [31:0] instr,
     output reg [31:0] if_pc,
-    input if_flush
+    output reg        if_pred_taken,
+    output reg [31:0] if_pred_target
 );
 
     wire [31:0] imem_data;
@@ -18,20 +23,18 @@ module IF (
         .rst        (rst)
     );
 
-    assign instr = (if_flush) ? 32'h00000013 : imem_data;  // NOP on flush
+    assign instr = imem_data;
 
-    reg [31:0] pc_q;
-    
-    // 修复：stall 时保持 pc_q 不变！
     always @(posedge clk) begin
         if (rst) begin
-            pc_q <= 32'b0;
-        end else if (!if_stall) begin  // ← 关键修复！
-            pc_q <= pc;
+            if_pc          <= 32'b0;
+            if_pred_taken  <= 1'b0;
+            if_pred_target <= 32'b0;
+        end else if (!if_stall) begin
+            if_pc          <= pc;
+            if_pred_taken  <= fetch_pred_taken;
+            if_pred_target <= fetch_pred_target;
         end
-        // else: stall 时保持 pc_q
     end
-
-    assign if_pc = (if_flush) ? 32'b0 : pc_q;
 
 endmodule

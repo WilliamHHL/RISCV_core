@@ -247,18 +247,15 @@ module ID (
                 alu_op      = ALU_ADD;
             end
             OPCODE_SYSTEM: begin
-                // funct3==000: ECALL/EBREAK/URET/MRET/SRET/WFI
                 if (funct3 == 3'b000) begin
-                    if (funct12 == 12'h000) begin
-                        // ECALL
-                        ecall = 1'b1;
-                    end else if (funct12 == 12'h001) begin
-                        // EBREAK
-                        ebreak = 1'b1;
-                    end
+                    // ECALL/EBREAK don't write to rd
+                    if (funct12 == 12'h000) ecall = 1'b1;
+                    else if (funct12 == 12'h001) ebreak = 1'b1;
+                    reg_write = 1'b0;
+                end else begin
+                    // CSR read instructions (funct3 != 0) write to rd
+                    reg_write = 1'b1;
                 end
-                // Default to NOP behavior until CSR/trap machinery exists
-                reg_write   = 1'b0;
                 alu_rs2_imm = 1'b0;
                 alu_op      = ALU_ADD;
                 imm_type    = IMM_I;

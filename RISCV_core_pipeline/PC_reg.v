@@ -3,44 +3,41 @@ module PC_reg(
     input         rst,
     output reg [31:0] pc,
     input         pc_stall,
-    input         ex_redirect_taken,
-    input  [31:0] ex_branch_target
+
+    // Redirect from EX (mispredict / jal / jalr correction)
+    input         ex_redirect,
+    input  [31:0] ex_redirect_pc,
+
+    // Redirect from IF predictor
+    input         if_pred_redirect,
+    input  [31:0] if_pred_target
 );
 
-reg [31:0]  dbg_cnt;
-reg [31:0] pc_before;  // debug purpose
+reg [31:0] dbg_cnt;
+reg [31:0] pc_before;
 
 always @(posedge clk) begin
-    pc_before <= pc; //debug purpose
+    pc_before <= pc;
 
     if (rst) begin
         pc      <= 32'b0;
         dbg_cnt <= 32'd0;
     end
-    // branch/jump
-    else if (ex_redirect_taken) begin
-        pc      <= ex_branch_target;
+    else if (ex_redirect) begin
+        pc      <= ex_redirect_pc;
         dbg_cnt <= dbg_cnt + 1'b1;
-        `ifndef SYNTHESIS
-        //$display("PC_REG BR  : ... pc_before=%08x pc_next=%08x", pc_before, ex_branch_target);
-        `endif
     end
     else if (!pc_stall) begin
-        pc      <= pc + 4;   // step,also equal to branch prediction: always not taken
+        if (if_pred_redirect) begin
+            pc <= if_pred_target;
+        end else begin
+            pc <= pc + 32'd4;
+        end
         dbg_cnt <= dbg_cnt + 1'b1;
-        `ifndef SYNTHESIS
-        //$display("PC_REG STEP: time=%0t pc_before=%08x pc_after=%08x pc_stall=%b",
-          //       $time, pc_before, pc, pc_stall);
-        `endif
     end
     else begin
-        // stall
         dbg_cnt <= dbg_cnt + 1'b1;
         pc <= pc;
-        `ifndef SYNTHESIS
-        //$display("PC_REG HOLD: time=%0t pc_before=%08x pc_after=%08x pc_stall=%b",
-        //         $time, pc_before, pc, pc_stall);
-        `endif
     end
 end
 

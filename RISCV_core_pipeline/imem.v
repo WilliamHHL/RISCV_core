@@ -1,6 +1,7 @@
 // verilator lint_off UNUSEDSIGNAL
 // verilator lint_off UNDRIVEN
 
+// imem_timing_like.v
 module imem (
     input  wire        clk,
     input  wire        rst,
@@ -21,13 +22,25 @@ module imem (
     end
 `endif
 
+    reg [14:0] addr_q;
+
+    // latch address on posedge (like OpenRAM input regs)
     always @(posedge clk) begin
         if (rst) begin
-            data <= 32'h00000013;  // NOP
+            addr_q <= 15'd0;
         end else if (!imem_stall) begin
-            data <= mem[word_addr];
+            addr_q <= word_addr;
         end
-        // else: hold data (implicit)
+        // else hold
+    end
+
+    // update dout on negedge (like OpenRAM read block)
+    always @(negedge clk) begin
+        if (rst) begin
+            data <= 32'h00000013; // NOP
+        end else begin
+            data <= mem[addr_q];
+        end
     end
 
 endmodule

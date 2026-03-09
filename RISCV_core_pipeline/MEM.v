@@ -20,6 +20,7 @@ module MEM (
 
     reg [31:0] dmem [0:32767];
 
+    // --- Decode (combinational, for assertions/debug like your original) ---
     wire [14:0] index    = alu_result[16:2];  // Word index
     wire [1:0]  byte_sel = alu_result[1:0];   // Byte select
     wire        in_dmem  = (alu_result[31:17] == 15'h0800);
@@ -46,65 +47,110 @@ module MEM (
     end
 `endif
 
-    // Load path
-    wire [31:0] word_read = dmem[index];
-
-    reg [7:0] selected_byte;
-    always @(*) begin
-        case (byte_sel)
-            2'b00: selected_byte = word_read[7:0];
-            2'b01: selected_byte = word_read[15:8];
-            2'b10: selected_byte = word_read[23:16];
-            2'b11: selected_byte = word_read[31:24];
-        endcase
-    end
-
-    reg [15:0] selected_half;
-    always @(*) begin
-        case (byte_sel[1])
-            1'b0: selected_half = word_read[15:0];
-            1'b1: selected_half = word_read[31:16];
-        endcase
-    end
+    // --------------------------------------------------------------------
+    // Timing-like behavior:
+    //   posedge: latch all inputs (addr/control/data/size/sign)
+    //   negedge: perform write + read using latched values
+    // --------------------------------------------------------------------
+    reg        mem_read_q, mem_write_q;
+    reg [31:0] addr_q, rs2_q;
+    reg        load_signed_q;
+    reg [1:0]  load_size_q, store_size_q;
 
     always @(posedge clk) begin
-        if (mem_read && in_dmem) begin
-            case (load_size)
-                2'b00:   mem_data <= load_signed ? {{24{selected_byte[7]}}, selected_byte} : {24'b0, selected_byte};
-                2'b01:   mem_data <= load_signed ? {{16{selected_half[15]}}, selected_half} : {16'b0, selected_half};
-                default: mem_data <= word_read;
+        mem_read_q    <= mem_read;
+        mem_write_q   <= mem_write;
+        addr_q        <= alu_result;
+        rs2_q         <= rs2_data;
+        load_signed_q <= load_signed;
+        load_size_q   <= load_size;
+        store_size_q  <= store_size;
+    end
+
+    // Derived fields from latched address
+    wire [14:0] index_q    = addr_q[16:2];
+    wire [1:0]  byte_sel_q = addr_q[1:0];
+    wire        in_dmem_q  = (addr_q[31:17] == 15'h0800);
+    wire        is_uart_q  = (addr_q == 32'h2000_0000);
+
+    // Helper: apply a store (SB/SH/SW) to an existing word (write-first model)
+    function automatic [31:0] apply_store_to_word(
+        input [31:0] old_word,
+        input [31:0] store_data,
+        input [1:0]  st_size,
+        input [1:0]  bsel
+    );
+        reg [31:0] w;
+        begin
+            w = old_word;
+            case (st_size)
+                2'b00: begin // SB
+                    case (bsel)
+                        2'b00: w[7:0]   = store_data[7:0];
+                        2'b01: w[15:8]  = store_data[7:0];
+                        2'b10: w[23:16] = store_data[7:0];
+                        2'b11: w[31:24] = store_data[7:0];
+                    endcase
+                end
+                2'b01: begin // SH
+                    case (bsel[1])
+                        1'b0: w[15:0]  = store_data[15:0];
+                        1'b1: w[31:16] = store_data[15:0];
+                    endcase
+                end
+                default: begin // SW (2'b10) or others
+                    w = store_data;
+                end
             endcase
+            apply_store_to_word = w;
         end
-    end
+    endfunction
 
-    // Store path
-    always @(posedge clk) begin
-        if (mem_write) begin
-            `ifndef SYNTHESIS
-            if (is_uart) begin
-                uart_putc(rs2_data[7:0]);
-            end else
-            `endif
-            if (in_dmem) begin
-                case (store_size)
-                    2'b00: begin
-                        case (byte_sel)
-                            2'b00: dmem[index][7:0]   <= rs2_data[7:0];
-                            2'b01: dmem[index][15:8]  <= rs2_data[7:0];
-                            2'b10: dmem[index][23:16] <= rs2_data[7:0];
-                            2'b11: dmem[index][31:24] <= rs2_data[7:0];
-                        endcase
-                    end
-                    2'b01: begin
-                        case (byte_sel[1])
-                            1'b0: dmem[index][15:0]  <= rs2_data[15:0];
-                            1'b1: dmem[index][31:16] <= rs2_data[15:0];
-                        endcase
-                    end
-                    default: dmem[index] <= rs2_data;
-                endcase
+    // Main memory action happens on negedge (like OpenRAM model)
+    always @(negedge clk) begin : MEM_ACTION
+        reg [31:0] word_before;
+        reg [31:0] word_effective; // what a read returns (write-first if same-cycle write)
+        reg [7:0]  sel_b;
+        reg [15:0] sel_h;
+
+        word_before    = dmem[index_q];
+        word_effective = word_before;
+
+        // WRITE (commit at negedge)
+        if (mem_write_q) begin
+`ifndef SYNTHESIS
+            if (is_uart_q) begin
+                uart_putc(rs2_q[7:0]);
+            end
+`endif
+            if (in_dmem_q) begin
+                word_effective = apply_store_to_word(word_before, rs2_q, store_size_q, byte_sel_q);
+                dmem[index_q]  <= word_effective;
             end
         end
+
+        // READ (produce data at negedge)
+        if (mem_read_q && in_dmem_q) begin
+            // select byte/half from word_effective (write-first if same-cycle store)
+            case (byte_sel_q)
+                2'b00: sel_b = word_effective[7:0];
+                2'b01: sel_b = word_effective[15:8];
+                2'b10: sel_b = word_effective[23:16];
+                default: sel_b = word_effective[31:24];
+            endcase
+
+            case (byte_sel_q[1])
+                1'b0: sel_h = word_effective[15:0];
+                1'b1: sel_h = word_effective[31:16];
+            endcase
+
+            case (load_size_q)
+                2'b00:   mem_data <= load_signed_q ? {{24{sel_b[7]}}, sel_b} : {24'b0, sel_b};
+                2'b01:   mem_data <= load_signed_q ? {{16{sel_h[15]}}, sel_h} : {16'b0, sel_h};
+                default: mem_data <= word_effective; // LW
+            endcase
+        end
+        // else: hold mem_data (same as your original behavior)
     end
 
 endmodule

@@ -9,8 +9,6 @@ module EX (
     input  [2:0]  branch_op,
     input         jal,
     input         jalr,
-    input  [2:0]  funct3, // unused
-    input  [6:0]  funct7, // unused
 
     output reg [31:0] alu_core_result,
     output      [31:0] pc_plus4,

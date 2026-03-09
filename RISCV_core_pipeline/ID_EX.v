@@ -27,9 +27,14 @@ module ID_EX (
     input  [1:0]  id_load_size,
     input  [1:0]  id_store_size,
 
+    input         id_pred_taken,
+    input  [31:0] id_pred_target,
+
     input         id_csr_hit,
-    input  [31:0] id_csr_data,
-    input       id_ecall, id_ebreak, id_fence,
+    input  [11:0] id_csr_addr,
+    input         id_ecall,
+    input         id_ebreak,
+    input         id_fence,
 
     // To EX stage
     output reg [31:0] ex_pc,
@@ -56,10 +61,16 @@ module ID_EX (
     output reg [1:0]  ex_store_size,
 
     output reg        ex_csr_hit,
-    output reg [31:0] ex_csr_data,
-    output reg       ex_ecall, ex_ebreak, ex_fence
+    output reg [11:0] ex_csr_addr,
+    output reg        ex_ecall,
+    output reg        ex_ebreak,
+    output reg        ex_fence,
+
+    output reg        ex_pred_taken,
+    output reg [31:0] ex_pred_target
 );
-    always @(posedge clk or posedge rst) begin
+
+    always @(posedge clk) begin
         if (rst || idex_flush) begin
             ex_pc              <= 32'b0;
             ex_rs1_val         <= 32'b0;
@@ -83,12 +94,12 @@ module ID_EX (
             ex_load_size       <= 2'b10;
             ex_store_size      <= 2'b10;
             ex_csr_hit         <= 1'b0;
-            ex_csr_data        <= 32'b0;
+            ex_csr_addr        <= 12'b0;
             ex_ebreak          <= 1'b0;
-            ex_ecall          <= 1'b0;
-            ex_fence          <= 1'b0;
-            
-            
+            ex_ecall           <= 1'b0;
+            ex_fence           <= 1'b0;
+            ex_pred_taken      <= 1'b0;
+            ex_pred_target     <= 32'b0;
         end else begin
             ex_pc              <= id_pc;
             ex_rs1_val         <= id_rs1_val;
@@ -112,10 +123,13 @@ module ID_EX (
             ex_load_size       <= id_load_size;
             ex_store_size      <= id_store_size;
             ex_csr_hit         <= id_csr_hit;
-            ex_csr_data        <= id_csr_data;
+            ex_csr_addr        <= id_csr_addr;
             ex_ebreak          <= id_ebreak;
-            ex_ecall          <= id_ecall;
-            ex_fence          <= id_fence;
+            ex_ecall           <= id_ecall;
+            ex_fence           <= id_fence;
+            ex_pred_taken      <= id_pred_taken;
+            ex_pred_target     <= id_pred_target;
         end
     end
+
 endmodule

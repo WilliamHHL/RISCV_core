@@ -1,23 +1,25 @@
 module hazard_unit (
     input  wire [4:0] id_rs1,
     input  wire [4:0] id_rs2,
-    input clk,
-    input rst,
+    input  wire       clk,
+    input  wire       rst,
 
     // ID/EX (EX stage)
     input  wire       idex_mem_read,
     input  wire [4:0] idex_rd,
     input  wire       idex_reg_write,
+    input  wire       idex_csr_hit,
 
     // EX/MEM
     input  wire       exmem_reg_write,
     input  wire [4:0] exmem_rd,
+    input  wire       exmem_csr_hit,
 
     // MEM/WB
     input  wire       memwb_reg_write,
     input  wire [4:0] memwb_rd,
 
-    // redirect from EX (branch/jal/jalr taken)
+    // redirect from EX (mispredict / jal / jalr correction)
     input  wire       ex_redirect,
 
     output wire       stall_if,
@@ -26,38 +28,38 @@ module hazard_unit (
     output wire       flush_idex
 );
 
-    // Load-use hazard only:
-    // ID needs id_rs1/id_rs2; EX stage has a load which will write idex_rd,
-    // and that load result won't be ready until MEM/WB.
     wire load_use_hazard =
         idex_mem_read &&
         (idex_rd != 5'd0) &&
         ((idex_rd == id_rs1) || (idex_rd == id_rs2));
 
-    // No ALU RAW hazards here: WB bypass in regfile already handles that.
+    wire csr_use_hazard_ex =
+        idex_csr_hit &&
+        (idex_rd != 5'd0) &&
+        ((idex_rd == id_rs1) || (idex_rd == id_rs2));
 
-    // Stalls on load-use
-    assign stall_if  = load_use_hazard;
-    assign stall_id  = load_use_hazard;
+    wire csr_use_hazard_mem =
+        exmem_csr_hit &&
+        (exmem_rd != 5'd0) &&
+        ((exmem_rd == id_rs1) || (exmem_rd == id_rs2));
 
-    // Flushing:
-    // - on load-use, bubble EX by flushing ID/EX (once)
-    // - on redirect, flush IF/ID and ID/EX
-    //assign flush_ifid = ex_redirect;                 // kill wrong-path instr in IF/ID
-    reg flush_ifid_q;
+    wire any_data_hazard = load_use_hazard | csr_use_hazard_ex | csr_use_hazard_mem;
 
-    always @(posedge clk or posedge rst) begin
+    assign stall_if = any_data_hazard;
+    assign stall_id = any_data_hazard;
+
+    // Keep your old 2-cycle IF/ID flush behavior for EX redirect
+    reg ex_redirect_q;
+
+    always @(posedge clk) begin
         if (rst) begin
-            flush_ifid_q <= 1'b0;
+            ex_redirect_q <= 1'b0;
         end else begin
-            if (ex_redirect)       // cycle 0: branch taken
-                flush_ifid_q <= 1'b1;
-            else if (flush_ifid_q) // cycle 1 after redirect
-                flush_ifid_q <= 1'b0;
+            ex_redirect_q <= ex_redirect;
         end
     end
 
-    assign flush_ifid = ex_redirect | flush_ifid_q;
-    assign flush_idex = ex_redirect || load_use_hazard ;//|| flush_ifid; // kill EX instr on redirect or load-use
+    assign flush_ifid = ex_redirect | ex_redirect_q;
+    assign flush_idex = ex_redirect | any_data_hazard;
 
 endmodule

@@ -16,8 +16,10 @@ module EX_MEM (
     input         ex_load_signed,
     input  [31:0] ex_wb_candidate,
     input         ex_csr_hit,
-    input  [31:0] ex_csr_data,
-    input      ex_ecall, ex_ebreak, ex_fence,
+    input  [11:0] ex_csr_addr,
+    input         ex_ecall,
+    input         ex_ebreak,
+    input         ex_fence,
 
     // To MEM stage
     output reg [31:0] mem_pc,
@@ -33,9 +35,12 @@ module EX_MEM (
     output reg        mem_load_signed,
     output reg [31:0] mem_wb_candidate,
     output reg        mem_csr_hit,
-    output reg [31:0] mem_csr_data,
-    output reg mem_ebreak,mem_ecall,mem_fence
+    output reg [11:0] mem_csr_addr,      // Changed from [31:0] to [11:0]
+    output reg        mem_ebreak,
+    output reg        mem_ecall,
+    output reg        mem_fence
 );
+
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             mem_pc               <= 32'b0;
@@ -51,10 +56,10 @@ module EX_MEM (
             mem_load_signed      <= 1'b1;
             mem_wb_candidate     <= 32'b0;
             mem_csr_hit          <= 1'b0;
-            mem_csr_data         <= 32'b0;
-            mem_ebreak          <= 1'b0;
-            mem_ecall          <= 1'b0;
-            mem_fence          <= 1'b0;
+            mem_csr_addr         <= 12'b0;
+            mem_ebreak           <= 1'b0;
+            mem_ecall            <= 1'b0;
+            mem_fence            <= 1'b0;
         end else begin
             mem_pc               <= ex_pc;
             mem_alu_result       <= ex_alu_result;
@@ -69,10 +74,11 @@ module EX_MEM (
             mem_load_signed      <= ex_load_signed;
             mem_wb_candidate     <= ex_wb_candidate;
             mem_csr_hit          <= ex_csr_hit;
-            mem_csr_data         <= ex_csr_data;
-            mem_ebreak          <= ex_ebreak;
-            mem_ecall          <= ex_ecall;
-            mem_fence          <= ex_fence;
+            mem_csr_addr         <= ex_csr_addr;
+            mem_ebreak           <= ex_ebreak;
+            mem_ecall            <= ex_ecall;
+            mem_fence            <= ex_fence;
         end
     end
+
 endmodule
