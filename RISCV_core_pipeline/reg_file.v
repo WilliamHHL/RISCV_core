@@ -8,10 +8,7 @@ module reg_file (
     input rd_wen,
     output reg[31:0] rs1_data,
     output reg[31:0] rs2_data
-    /*output [31:0] regs_out1,
-    output [31:0] regs_out2,
-    output [31:0] regs_out3,
-    output [31:0] regs_out4*/
+   
 );
     
     reg [31:0] regs [0:31];
@@ -42,11 +39,6 @@ module reg_file (
             rs2_data = regs[rs2_addr];
         end
     end
-    /*assign regs_out1  = regs[1];
-    assign regs_out2  = regs[2];
-    assign regs_out3  = regs[3];
-    assign regs_out4  = regs[4];*/
-
     // Write port (writes on rising edge)
 
     

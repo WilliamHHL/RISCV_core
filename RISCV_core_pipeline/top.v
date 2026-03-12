@@ -6,7 +6,7 @@ module top (
     output  ebreak_pulse,
     output ecall_pulse
 );
-    //wire  [31:0] pc;
+   // wire  [31:0] pc;
     //wire [31:0] instr;
 
     // Split predictor sizing:
@@ -24,7 +24,7 @@ module top (
     // Stall / flush
     wire        if_stall, id_stall, ifid_flush, idex_flush;
     wire        pc_stall;
-    //wire        frontend_if_stall;
+    wire        frontend_if_stall;
 
     assign pc_stall          = if_stall | id_stall;
     //assign frontend_if_stall = pc_stall & ~ex_redirect;
@@ -51,9 +51,11 @@ module top (
     wire [31:0] if_pred_target_raw;
 
     // Disable predictor redirection in a cycle where EX already redirects.
-    assign if_pred_taken_raw  = (~ex_redirect) & btb_hit & (btb_is_jump | bht_pred_taken);
+    wire pred_taken_comb;
+    assign pred_taken_comb    = btb_hit & (btb_is_jump | bht_pred_taken);
+    assign if_pred_taken_raw  = pred_taken_comb;
     assign if_pred_target_raw = btb_pred_target;
-
+    
     PC_reg u_PC (
         .clk(clk),
         .rst(rst),
@@ -71,7 +73,7 @@ module top (
     wire [31:0] if_instr, if_pc;
     wire        if_pred_taken;
     wire [31:0] if_pred_target;
-
+    
     IF u_if (
         .clk              (clk),
         .rst              (rst),
@@ -91,7 +93,7 @@ module top (
     wire [31:0] id_pc, id_instr;
     wire        id_pred_taken;
     wire [31:0] id_pred_target;
-
+    
     IF_ID u_if_id (
         .clk           (clk),
         .rst           (rst),
@@ -122,7 +124,7 @@ module top (
     wire [1:0] load_size_d;
     wire [1:0] store_size_d;
     wire       id_ecall, id_ebreak, id_fence;
-
+   
     ID u_ID (
         .inst(id_instr),
         .rs1_addr(rs1_addr),
@@ -157,6 +159,7 @@ module top (
 
     // Register file
     wire [31:0] id_rs1_val, id_rs2_val;
+   
     reg_file u_regfile (
         .clk(clk),
         .rst(rst),
@@ -171,6 +174,7 @@ module top (
 
     // Immediate generator
     wire [31:0] id_imm;
+    
     immgen u_immgen (
         .inst(id_instr),
         .imm_type(imm_type),
@@ -191,7 +195,7 @@ module top (
     // ================================================================
     wire        csr_hit_id;
     wire [11:0] csr_addr_id;
-
+    (* keep_hierarchy = "yes" *)
     csr_read u_csr_read (
         .instr(id_instr),
         .csr_hit(csr_hit_id),
@@ -217,7 +221,7 @@ module top (
     wire        ex_alu_rs2_is_imm, ex_use_pc_add, ex_load_signed;
     wire [1:0]  ex_wb_sel, ex_load_size, ex_store_size;
     wire        ex_ecall, ex_ebreak, ex_fence;
-
+    
     ID_EX u_id_ex (
         .clk(clk),
         .rst(rst),
@@ -291,6 +295,10 @@ module top (
 
     // Forwarding unit controls
     wire [1:0] forward_a, forward_b;
+    wire       ex_can_forward_d;
+    reg        mem_can_forward_q;
+    reg        mem2_can_forward_q;
+    wire       wb_can_forward;
 
     // Forward declaration for load data used by MEM2 forwarding
     wire [31:0] mem_load_data;
@@ -305,57 +313,69 @@ module top (
     reg [11:0] mem_csr_addr_q;
     reg        mem_ebreak_q, mem_ecall_q, mem_fence_q;
     reg [31:0] mem_pc_q;
-    
+
+    assign ex_can_forward_d =
+        ex_reg_write & ~ex_mem_read & ~ex_csr_hit & (ex_rd_addr != 5'd0);
+
+    assign wb_can_forward =
+        wb_wen_final & (wb_rd_addr != 5'd0);
+
+    // ------------------------------------------------------------
+    // Control flops: keep reset
+    // ------------------------------------------------------------
     always @(posedge clk) begin
         if (rst) begin
-            mem_wb_candidate_q <= 32'b0;
-            mem_rd_addr_q      <= 5'd0;
-            mem_reg_write_q    <= 1'b0;
-            mem_wb_sel_q       <= 2'd0;
-            mem_csr_hit_q      <= 1'b0;
-            mem_csr_addr_q     <= 12'd0;
-            mem_ebreak_q       <= 1'b0;
-            mem_ecall_q        <= 1'b0;
-            mem_fence_q        <= 1'b0;
-            mem_pc_q           <= 32'b0;
-            mem_mem_read_q     <= 1'b0;
+            mem_rd_addr_q       <= 5'd0;
+            mem_reg_write_q     <= 1'b0;
+            mem_wb_sel_q        <= 2'd0;
+            mem_csr_hit_q       <= 1'b0;
+            mem_csr_addr_q      <= 12'd0;
+            mem_ebreak_q        <= 1'b0;
+            mem_ecall_q         <= 1'b0;
+            mem_fence_q         <= 1'b0;
+            mem_mem_read_q      <= 1'b0;
+            mem_can_forward_q   <= 1'b0;
+            mem2_can_forward_q  <= 1'b0;
         end else begin
-            mem_wb_candidate_q <= mem_wb_candidate;
-            mem_rd_addr_q      <= mem_rd_addr;
-            mem_reg_write_q    <= mem_reg_write;
-            mem_wb_sel_q       <= mem_wb_sel;
-            mem_csr_hit_q      <= mem_csr_hit;
-            mem_csr_addr_q     <= mem_csr_addr;
-            mem_ebreak_q       <= mem_ebreak;
-            mem_ecall_q        <= mem_ecall;
-            mem_fence_q        <= mem_fence;
-            mem_pc_q           <= mem_pc;
-            mem_mem_read_q     <= mem_mem_read;
+            mem_rd_addr_q       <= mem_rd_addr;
+            mem_reg_write_q     <= mem_reg_write;
+            mem_wb_sel_q        <= mem_wb_sel;
+            mem_csr_hit_q       <= mem_csr_hit;
+            mem_csr_addr_q      <= mem_csr_addr;
+            mem_ebreak_q        <= mem_ebreak;
+            mem_ecall_q         <= mem_ecall;
+            mem_fence_q         <= mem_fence;
+            mem_mem_read_q      <= mem_mem_read;
+            mem_can_forward_q   <= ex_can_forward_d;
+            mem2_can_forward_q  <= mem_reg_write & ~mem_csr_hit & (mem_rd_addr != 5'd0);
         end
     end
 
+    // ------------------------------------------------------------
+    // Wide data flops: NO reset, NO enable
+    // ------------------------------------------------------------
+    always @(posedge clk) begin
+        mem_wb_candidate_q <= mem_wb_candidate;
+        mem_pc_q           <= mem_pc;
+    end
+
     // MEM2 forwarding data
-    wire        mem2_is_load;
     wire [31:0] mem2_forward_data;
 
-    assign mem2_is_load      = mem_mem_read_q;
-    assign mem2_forward_data = mem2_is_load ? mem_load_data : mem_wb_candidate_q;
+    assign mem2_forward_data = mem_mem_read_q ? mem_load_data : mem_wb_candidate_q;
 
     // Forwarding unit
     forwarding_unit u_forwarding (
-        .ex_rs1_addr     (ex_rs1_addr),
-        .ex_rs2_addr     (ex_rs2_addr),
-        .exmem_reg_write (mem_reg_write),
-        .exmem_mem_read  (mem_mem_read),
-        .exmem_csr_hit   (mem_csr_hit),
-        .exmem_rd        (mem_rd_addr),
-        .mem2_reg_write  (mem_reg_write_q),
-        .mem2_csr_hit    (mem_csr_hit_q),
-        .mem2_rd         (mem_rd_addr_q),
-        .memwb_reg_write (wb_wen_final),
-        .memwb_rd        (wb_rd_addr),
-        .forward_a       (forward_a),
-        .forward_b       (forward_b)
+        .ex_rs1_addr      (ex_rs1_addr),
+        .ex_rs2_addr      (ex_rs2_addr),
+        .exmem_can_forward(mem_can_forward_q),
+        .exmem_rd         (mem_rd_addr),
+        .mem2_can_forward (mem2_can_forward_q),
+        .mem2_rd          (mem_rd_addr_q),
+        .memwb_can_forward(wb_can_forward),
+        .memwb_rd         (wb_rd_addr),
+        .forward_a        (forward_a),
+        .forward_b        (forward_b)
     );
 
     wire [31:0] ex_rs1_fwd;
@@ -371,19 +391,17 @@ module top (
                         (forward_b == 2'b01) ? wb_data_final :
                                                ex_rs2_val;
 
-    // Final ALU operands
-    wire [31:0] ex_rs1_val_to_alu = ex_rs1_fwd;
-    wire [31:0] ex_rs2_val_to_alu = ex_alu_rs2_is_imm ? ex_imm : ex_rs2_fwd;
-
     // EX stage
     wire [31:0] ex_pc_plus4, ex_auipc_result;
     wire [31:0] ex_alu_result, ex_branch_target;
     wire        ex_actual_taken;
+    wire [31:0] ex_pc_imm_target_fast;
+    assign ex_pc_imm_target_fast = ex_pc + ex_imm;
 
     EX u_EX (
         .pc(ex_pc),
-        .rs1_data(ex_rs1_val_to_alu),
-        .rs2_data(ex_rs2_val_to_alu),
+        .rs1_data(ex_rs1_fwd),
+        .rs2_data(ex_rs2_fwd),
         .imm(ex_imm),
         .alu_op(ex_alu_op),
         .alu_rs2_imm(ex_alu_rs2_is_imm),
@@ -408,7 +426,7 @@ module top (
         .u_pc        (ex_pc),
         .actual_taken(ex_actual_taken)
     );
-
+  
     btb_direct #(
         .INDEX_BITS(BTB_INDEX_BITS),
         .TAG_BITS  (BTB_TAG_BITS)
@@ -421,7 +439,7 @@ module top (
         .pred_is_jump(btb_is_jump),
         .update_en   (ex_jal | (ex_branch & ex_actual_taken)),
         .u_pc        (ex_pc),
-        .u_target    (ex_branch_target),
+        .u_target    (ex_pc_imm_target_fast),
         .u_is_jump   (ex_jal)
     );
 
@@ -445,10 +463,10 @@ module top (
 
     assign ex_dir_mispredict = (ex_actual_taken != ex_pred_taken);
     assign ex_tgt_mispredict =
+        (ex_branch | ex_jal) &
         ex_actual_taken &
         ex_pred_taken &
-        (ex_branch_target != ex_pred_target);
-
+        (ex_pc_imm_target_fast != ex_pred_target);
     assign ex_is_ctrl = ex_branch | ex_jal | ex_jalr;
 
     // If IF predicted taken but the decoded instruction in EX is not control-flow,
@@ -463,7 +481,9 @@ module top (
 
     assign ex_redirect_pc =
         ex_false_pred_nonctrl ? ex_pc_plus4 :
-        ex_actual_taken       ? ex_branch_target : ex_pc_plus4;
+        ex_jalr               ? ex_branch_target :
+        ex_actual_taken       ? ex_pc_imm_target_fast :
+                                ex_pc_plus4;
 
     // EX/MEM pipeline register
     wire [31:0] mem_pc, mem_alu_result, mem_rs2_val_for_store, mem_wb_candidate;
@@ -471,7 +491,7 @@ module top (
     wire        mem_reg_write, mem_mem_read, mem_mem_write, mem_load_signed;
     wire [1:0]  mem_wb_sel, mem_load_size, mem_store_size;
     wire        mem_ecall, mem_ebreak, mem_fence;
-
+    
     EX_MEM u_ex_mem (
         .clk(clk),
         .rst(rst),
@@ -512,7 +532,7 @@ module top (
         .mem_ecall(mem_ecall),
         .mem_fence(mem_fence)
     );
-
+    
     // MEM stage
     MEM u_MEM (
         .clk(clk),
@@ -532,7 +552,7 @@ module top (
     wire [1:0]  wb_wb_sel;
     wire        wb_ecall, wb_ebreak, wb_fence;
     wire        ebreak_q, ecall_q, fence_q;
-
+    
     MEM_WB u_mem_wb (
         .clk(clk),
         .rst(rst),
@@ -565,29 +585,42 @@ module top (
     
     // WB: core WB mux
     wire [31:0] wb_wb_data_core;
-    WB u_WB (
-        .mem_to_reg(wb_wb_sel == 2'd1),
-        .alu_result(wb_wb_candidate),
-        .mem_data(wb_load_data),
-        .wb_data(wb_wb_data_core),
-        .clk(clk)
-    );
+    wire        wb_mem_to_reg;
+
+    assign wb_mem_to_reg   = wb_wb_sel[0] & ~wb_wb_sel[1];
+    assign wb_wb_data_core = wb_mem_to_reg ? wb_load_data : wb_wb_candidate;
 
     // ================================================================
     // Independent CSR read at WB stage - uses CURRENT cycle_cnt
     // ================================================================
-    wire [31:0] wb_csr_data_live;
+    // ================================================================
+    // Registered CSR WB data
+    // Capture the CSR value aligned with the instruction entering WB.
+    // This breaks the long live path from cycle_cnt -> wb_data_final -> forwarding.
+    // ================================================================
+    wire [31:0] cycle_lo_next;
+    wire        cycle_hi_carry;
+    wire [31:0] cycle_hi_next;
+    reg  [31:0] wb_csr_data_q;
 
-    csr_wb_read u_csr_wb (
-        .csr_addr(wb_csr_addr),
-        .cycle_cnt(cycle_cnt),
-        .csr_hit(wb_csr_hit),
-        .csr_data(wb_csr_data_live)
-    );
+    assign cycle_lo_next  = cycle_cnt[31:0] + 32'd1;
+    assign cycle_hi_carry = &cycle_cnt[31:0];
+    assign cycle_hi_next  = cycle_cnt[63:32] + {31'd0, cycle_hi_carry};
+
+    always @(posedge clk) begin
+        if (rst) begin
+            wb_csr_data_q <= 32'd0;
+        end else if (mem_csr_hit_q) begin
+            // old mem_csr_*_q aligns with what MEM_WB captures into WB this edge
+            wb_csr_data_q <= mem_csr_addr_q[7] ? cycle_hi_next : cycle_lo_next;
+        end else begin
+            wb_csr_data_q <= 32'd0;
+        end
+    end
 
     // Final write-back: use live CSR data when CSR hit
-    assign wb_data_final = wb_csr_hit ? wb_csr_data_live : wb_wb_data_core;
-    assign wb_wen_final  = wb_csr_hit ? 1'b1 : wb_reg_write;
+    assign wb_data_final = wb_csr_hit ? wb_csr_data_q : wb_wb_data_core;
+    assign wb_wen_final  = wb_csr_hit | wb_reg_write;
 
     // Hazard unit
     hazard_unit u_hazard (
@@ -598,15 +631,10 @@ module top (
 
         .idex_mem_read   (ex_mem_read),
         .idex_rd         (ex_rd_addr),
-        .idex_reg_write  (ex_reg_write),
         .idex_csr_hit    (ex_csr_hit),
 
-        .exmem_reg_write (mem_reg_write),
         .exmem_rd        (mem_rd_addr),
         .exmem_csr_hit   (mem_csr_hit),
-
-        .memwb_reg_write (wb_wen_final),
-        .memwb_rd        (wb_rd_addr),
 
         .ex_redirect     (ex_redirect),
         .stall_if        (if_stall),

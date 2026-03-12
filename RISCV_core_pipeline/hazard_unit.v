@@ -7,19 +7,13 @@ module hazard_unit (
     // ID/EX (EX stage)
     input  wire       idex_mem_read,
     input  wire [4:0] idex_rd,
-    input  wire       idex_reg_write,
     input  wire       idex_csr_hit,
 
     // EX/MEM
-    input  wire       exmem_reg_write,
     input  wire [4:0] exmem_rd,
     input  wire       exmem_csr_hit,
 
-    // MEM/WB
-    input  wire       memwb_reg_write,
-    input  wire [4:0] memwb_rd,
-
-    // redirect from EX (mispredict / jal / jalr correction)
+    // redirect from EX
     input  wire       ex_redirect,
 
     output wire       stall_if,
@@ -48,15 +42,12 @@ module hazard_unit (
     assign stall_if = any_data_hazard;
     assign stall_id = any_data_hazard;
 
-    // Keep your old 2-cycle IF/ID flush behavior for EX redirect
     reg ex_redirect_q;
-
     always @(posedge clk) begin
-        if (rst) begin
+        if (rst)
             ex_redirect_q <= 1'b0;
-        end else begin
+        else
             ex_redirect_q <= ex_redirect;
-        end
     end
 
     assign flush_ifid = ex_redirect | ex_redirect_q;
