@@ -184,6 +184,10 @@ To reduce branch penalty in the pipelined CPU, dynamic branch prediction was add
 - Better benchmark efficiency
 - Increased area and power due to predictor hardware
 
+*Figure: Final GDS layout of Version 4 – 5-stage pipelined RV32I CPU with dynamic branch prediction.*
+![Version 4 GDS layout](version4gds.png)
+
+
 ---
 
 ## Future Work
