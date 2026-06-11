@@ -1,4 +1,4 @@
-# ========== Design basic ==========
+# ========== Design basic (timing-friendly registered-MUL mode) ==========
 set ::env(DESIGN_NAME) {top}
 set ::env(VERILOG_FILES) "\
     $::env(DESIGN_DIR)/src/top.v \
@@ -23,8 +23,8 @@ set ::env(VERILOG_FILES) "\
     $::env(DESIGN_DIR)/src/ras_stack.v \
     $::env(DESIGN_DIR)/src/rv32_muldiv_unit.v"
 
-# ========== Synthesis defines ==========
-set ::env(SYNTH_DEFINES) [list "SYNTHESIS"]
+# ========== Synthesis defines (ENABLE_TIMING_MULDIV activates the registered multi-cycle MUL) ==========
+set ::env(SYNTH_DEFINES) [list "SYNTHESIS" "ENABLE_TIMING_MULDIV"]
 
 # ========== Clock ==========
 set ::env(CLOCK_PORT) "clk"
@@ -37,10 +37,8 @@ set ::env(VERILOG_FILES_BLACKBOX) "$::env(DESIGN_DIR)/src/sky130_sram_1kbyte_1rw
 set sram_lef "$::env(PDK_ROOT)/sky130A/libs.ref/sky130_sram_macros/lef/sky130_sram_1kbyte_1rw1r_32x256_8.lef"
 set sram_lib "$::env(PDK_ROOT)/sky130A/libs.ref/sky130_sram_macros/lib/sky130_sram_1kbyte_1rw1r_32x256_8_TT_1p8V_25C.lib"
 
-# For OpenLane 1.0.2, use EXTRA_* so that they are merged into merged.nom.lef
 set ::env(EXTRA_LEFS) $sram_lef
 set ::env(EXTRA_LIBS) $sram_lib
-# Extra GDS for Klayout
 set ::env(EXTRA_GDS_FILES) "$::env(PDK_ROOT)/sky130A/libs.ref/sky130_sram_macros/gds/sky130_sram_1kbyte_1rw1r_32x256_8.gds"
 
 
@@ -57,14 +55,11 @@ set ::env(FP_CORE_MARGIN)  10
 set ::env(PL_TARGET_DENSITY) 0.5
 set ::env(FP_ASPECT_RATIO)   1.0
 
-
 set ::env(MAGIC_GDS_ALLOW_ABSTRACT) 1
 
-# Macro parameters
 set ::env(MACRO_PLACE_HALO)    "40 40"
 set ::env(MACRO_PLACE_CHANNEL) "40 40"
 set ::env(MACRO_PLACEMENT_CFG) "$::env(DESIGN_DIR)/macro_placement.cfg"
-# Hook SRAM macro power pins to top-level VDD/GND (required for LVS)
 set ::env(FP_PDN_MACRO_HOOKS) "\
   u_if.u_imem_sram\.u_sram vccd1 vssd1 vccd1 vssd1, \
   u_MEM.u_dmem             vccd1 vssd1 vccd1 vssd1"
@@ -86,5 +81,4 @@ if { [file exists $tech_specific_config] == 1 } {
     source $tech_specific_config
 }
 
-# Boost up runtime
 set ::env(OPENLANE_MAX_THREADS) 8

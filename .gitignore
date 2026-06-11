@@ -15,3 +15,7 @@ perf_*.raw.txt
 __pycache__/
 syn/reports/
 syn/*.lib
+OpenLane\ Flow/runs/
+OpenLane\ Flow/src/sky130_sram_1kbyte_1rw1r_32x256_8.v
+OpenLane\ Flow/src/*.lib
+openlane_design/
