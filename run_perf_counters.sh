@@ -4,6 +4,7 @@ set -euo pipefail
 # Run a CoreMark configuration and parse the PERF counters emitted by tb_top.v.
 # Usage:
 #   ./run_perf_counters.sh rv32im-mul
+#   ./run_perf_counters.sh rv32im-mul-timing
 #   ./run_perf_counters.sh rv32i
 #   ./run_perf_counters.sh rv32im-full-simdiv
 #   ./run_perf_counters.sh zmmul
@@ -17,6 +18,9 @@ case "$MODE" in
   rv32im-mul)
     LOG="coremark_rv32im_combmul.log"
     ;;
+  rv32im-mul-timing|timing-mul|timing)
+    LOG="coremark_rv32im_timing_mul.log"
+    ;;
   rv32im-full-simdiv|full-simdiv|simdiv)
     LOG="coremark_rv32im_full_simdiv.log"
     ;;
@@ -25,7 +29,7 @@ case "$MODE" in
     ;;
   *)
     echo "Unknown mode: $MODE" >&2
-    echo "Valid modes: rv32i, rv32im-mul, rv32im-full-simdiv, zmmul" >&2
+    echo "Valid modes: rv32i, rv32im-mul, rv32im-mul-timing, rv32im-full-simdiv, zmmul" >&2
     exit 2
     ;;
 esac

@@ -1,0 +1,499 @@
+diff -ru /mnt/data/orig_bpred/RISC-V_CPU_NEW/Makefile /mnt/data/work_muldiv/RISC-V_CPU_NEW/Makefile
+--- /mnt/data/orig_bpred/RISC-V_CPU_NEW/Makefile	2026-06-11 14:32:45.000000000 +0000
++++ /mnt/data/work_muldiv/RISC-V_CPU_NEW/Makefile	2026-06-11 17:04:47.783122484 +0000
+@@ -20,7 +20,8 @@
+   $(SRC_DIR)/forwarding_unit.v \
+   $(SRC_DIR)/bht_2bit.v \
+   $(SRC_DIR)/btb_direct.v \
+-  $(SRC_DIR)/ras_stack.v
++  $(SRC_DIR)/ras_stack.v \
++  $(SRC_DIR)/rv32_muldiv_unit.v
+ 
+ TB = $(SRC_DIR)/tb_top.v
+ TOP = tb_top
+@@ -32,7 +33,7 @@
+ PROGRAM_HEX = $(COREMARK_DIR)/program.hex
+ DATA_HEX = $(COREMARK_DIR)/data.hex
+ 
+-.PHONY: all run clean coremark coremark-rv32i coremark-rv32im-mul coremark-rv32im-full coremark-zmmul run-rv32i run-rv32im-mul run-rv32im-full-simdiv run-zmmul perf-rv32i perf-rv32im-mul perf-rv32im-full-simdiv perf-zmmul sim
++.PHONY: all run clean coremark coremark-rv32i coremark-rv32im-mul coremark-rv32im-mul-timing coremark-rv32im-full coremark-zmmul run-rv32i run-rv32im-mul run-rv32im-mul-timing run-rv32im-full-simdiv run-zmmul perf-rv32i perf-rv32im-mul perf-rv32im-mul-timing perf-rv32im-full-simdiv perf-zmmul sim
+ 
+ all: $(EXE)
+ 
+@@ -51,6 +52,12 @@
+ 	$(MAKE) -C $(COREMARK_DIR) clean
+ 	$(MAKE) -C $(COREMARK_DIR) RV_ARCH=rv32im_zicsr EXTRA_CFLAGS=-mno-div COREMARK_TAG=rv32im-combmul-mno-div
+ 
++# Same binary ISA constraints as coremark-rv32im-mul, but tagged separately
++# for the timing-friendly registered-MUL RTL experiment.
++coremark-rv32im-mul-timing:
++	$(MAKE) -C $(COREMARK_DIR) clean
++	$(MAKE) -C $(COREMARK_DIR) RV_ARCH=rv32im_zicsr EXTRA_CFLAGS=-mno-div COREMARK_TAG=rv32im-timingmul-mno-div
++
+ # Full RV32IM benchmark build. This may emit DIV/DIVU/REM/REMU.
+ # Only run it with VERILATOR_DEFS=-DENABLE_SIM_COMB_DIV until a real divider
+ # replaces the simulation-only combinational divider in EX.v.
+@@ -82,6 +89,19 @@
+ 	cp $(DATA_HEX) ./
+ 	./$(EXE) | tee coremark_rv32im_combmul.log
+ 
++# Timing-friendly registered MUL build. This rebuilds Verilator with
++# ENABLE_TIMING_MULDIV so MUL/MULH/MULHSU/MULHU use rv32_muldiv_unit
++# instead of the one-cycle EX combinational multiplier. DIV/REM remain
++# unsupported in this first timing-friendly commit, so CoreMark still uses
++# -mno-div via coremark-rv32im-mul.
++run-rv32im-mul-timing:
++	$(MAKE) clean
++	$(MAKE) VERILATOR_DEFS=-DENABLE_TIMING_MULDIV $(EXE)
++	$(MAKE) coremark-rv32im-mul-timing
++	cp $(PROGRAM_HEX) ./
++	cp $(DATA_HEX) ./
++	./$(EXE) | tee coremark_rv32im_timing_mul.log
++
+ run-rv32im-full-simdiv: $(EXE) coremark-rv32im-full
+ 	cp $(PROGRAM_HEX) ./
+ 	cp $(DATA_HEX) ./
+@@ -98,6 +118,9 @@
+ perf-rv32im-mul:
+ 	./run_perf_counters.sh rv32im-mul
+ 
++perf-rv32im-mul-timing:
++	./run_perf_counters.sh rv32im-mul-timing
++
+ perf-rv32im-full-simdiv:
+ 	./run_perf_counters.sh rv32im-full-simdiv
+ 
+Only in /mnt/data/work_muldiv/RISC-V_CPU_NEW: TIMING_MULDIV_COMMIT1_NOTES.md
+Binary files /mnt/data/orig_bpred/RISC-V_CPU_NEW/__pycache__/analyze_perf_log.cpython-313.pyc and /mnt/data/work_muldiv/RISC-V_CPU_NEW/__pycache__/analyze_perf_log.cpython-313.pyc differ
+diff -ru /mnt/data/orig_bpred/RISC-V_CPU_NEW/analyze_perf_log.py /mnt/data/work_muldiv/RISC-V_CPU_NEW/analyze_perf_log.py
+--- /mnt/data/orig_bpred/RISC-V_CPU_NEW/analyze_perf_log.py	2026-06-11 14:33:06.000000000 +0000
++++ /mnt/data/work_muldiv/RISC-V_CPU_NEW/analyze_perf_log.py	2026-06-11 17:04:11.678582525 +0000
+@@ -63,6 +63,13 @@
+ print(f"mul total                    {g('mul_count') + g('mulh_count') + g('mulhsu_count') + g('mulhu_count')}  ({pct(g('mul_count') + g('mulh_count') + g('mulhsu_count') + g('mulhu_count'), issue)} of issue)")
+ print(f"div/rem total                {g('div_count') + g('divu_count') + g('rem_count') + g('remu_count')}  ({pct(g('div_count') + g('divu_count') + g('rem_count') + g('remu_count'), issue)} of issue)")
+ print()
++print("-- MUL/DIV unit diagnostics --")
++print(f"muldiv_start_count          {g('muldiv_start_count')}")
++print(f"muldiv_busy_cycles          {g('muldiv_busy_cycles')}  ({pct(g('muldiv_busy_cycles'), total)})")
++print(f"muldiv_done_count           {g('muldiv_done_count')}")
++print(f"muldiv_stall_cycles         {g('muldiv_stall_cycles')}  ({pct(g('muldiv_stall_cycles'), total)})")
++print(f"muldiv_stall_per_start      {ratio(g('muldiv_stall_cycles'), g('muldiv_start_count'))}")
++print()
+ print("-- Branch / redirect diagnostics --")
+ print(f"branch_taken                 {g('branch_taken_count')}  ({pct(g('branch_taken_count'), branch)} of branches)")
+ print(f"branch_pred_taken            {g('branch_pred_taken_count')}  ({pct(g('branch_pred_taken_count'), branch)} of branches)")
+diff -ru /mnt/data/orig_bpred/RISC-V_CPU_NEW/run_coremark_mul.sh /mnt/data/work_muldiv/RISC-V_CPU_NEW/run_coremark_mul.sh
+--- /mnt/data/orig_bpred/RISC-V_CPU_NEW/run_coremark_mul.sh	2026-06-11 13:00:40.000000000 +0000
++++ /mnt/data/work_muldiv/RISC-V_CPU_NEW/run_coremark_mul.sh	2026-06-11 17:04:11.678164757 +0000
+@@ -4,7 +4,8 @@
+ # Run CoreMark variants on this RV32 CPU workspace.
+ # Usage:
+ #   ./run_coremark_mul.sh rv32i              # baseline: -march=rv32i_zicsr
+-#   ./run_coremark_mul.sh rv32im-mul         # MUL only: -march=rv32im_zicsr -mno-div
++#   ./run_coremark_mul.sh rv32im-mul         # one-cycle comb MUL: -march=rv32im_zicsr -mno-div
++#   ./run_coremark_mul.sh rv32im-mul-timing  # timing-friendly registered MUL: -march=rv32im_zicsr -mno-div
+ #   ./run_coremark_mul.sh rv32im-full-simdiv # full RV32IM with simulation-only comb DIV
+ #   ./run_coremark_mul.sh zmmul              # official Zmmul ISA string, if GCC supports it
+ 
+@@ -16,6 +17,11 @@
+     make clean
+     make run-rv32im-mul
+     ;;
++  rv32im-mul-timing|timing-mul|timing)
++    echo "[run_coremark_mul] Cleaning and running RV32IM timing-friendly registered MUL build (-mno-div)..."
++    echo "[run_coremark_mul] Verilator define: -DENABLE_TIMING_MULDIV"
++    make run-rv32im-mul-timing
++    ;;
+   rv32im-full-simdiv|full-simdiv|simdiv)
+     echo "[run_coremark_mul] Cleaning and running full RV32IM with simulation-only combinational DIV/REM..."
+     echo "[run_coremark_mul] Verilator define: -DENABLE_SIM_COMB_DIV"
+@@ -34,7 +40,7 @@
+     ;;
+   *)
+     echo "Unknown mode: $MODE" >&2
+-    echo "Valid modes: rv32i, rv32im-mul, rv32im-full-simdiv, zmmul" >&2
++    echo "Valid modes: rv32i, rv32im-mul, rv32im-mul-timing, rv32im-full-simdiv, zmmul" >&2
+     exit 2
+     ;;
+ esac
+diff -ru /mnt/data/orig_bpred/RISC-V_CPU_NEW/run_perf_counters.sh /mnt/data/work_muldiv/RISC-V_CPU_NEW/run_perf_counters.sh
+--- /mnt/data/orig_bpred/RISC-V_CPU_NEW/run_perf_counters.sh	2026-06-11 13:58:46.000000000 +0000
++++ /mnt/data/work_muldiv/RISC-V_CPU_NEW/run_perf_counters.sh	2026-06-11 17:04:11.678410232 +0000
+@@ -4,6 +4,7 @@
+ # Run a CoreMark configuration and parse the PERF counters emitted by tb_top.v.
+ # Usage:
+ #   ./run_perf_counters.sh rv32im-mul
++#   ./run_perf_counters.sh rv32im-mul-timing
+ #   ./run_perf_counters.sh rv32i
+ #   ./run_perf_counters.sh rv32im-full-simdiv
+ #   ./run_perf_counters.sh zmmul
+@@ -17,6 +18,9 @@
+   rv32im-mul)
+     LOG="coremark_rv32im_combmul.log"
+     ;;
++  rv32im-mul-timing|timing-mul|timing)
++    LOG="coremark_rv32im_timing_mul.log"
++    ;;
+   rv32im-full-simdiv|full-simdiv|simdiv)
+     LOG="coremark_rv32im_full_simdiv.log"
+     ;;
+@@ -25,7 +29,7 @@
+     ;;
+   *)
+     echo "Unknown mode: $MODE" >&2
+-    echo "Valid modes: rv32i, rv32im-mul, rv32im-full-simdiv, zmmul" >&2
++    echo "Valid modes: rv32i, rv32im-mul, rv32im-mul-timing, rv32im-full-simdiv, zmmul" >&2
+     exit 2
+     ;;
+ esac
+Only in /mnt/data/work_muldiv/RISC-V_CPU_NEW: run_timing_mul_test.sh
+diff -ru /mnt/data/orig_bpred/RISC-V_CPU_NEW/src/EX.v /mnt/data/work_muldiv/RISC-V_CPU_NEW/src/EX.v
+--- /mnt/data/orig_bpred/RISC-V_CPU_NEW/src/EX.v	2026-06-11 13:01:18.000000000 +0000
++++ /mnt/data/work_muldiv/RISC-V_CPU_NEW/src/EX.v	2026-06-11 17:01:55.042122895 +0000
+@@ -44,9 +44,13 @@
+ 
+     wire [4:0] shamt = alu_rs2_imm ? imm[4:0] : rs2_data[4:0];//shamt=shift amount
+ 
+-    // Combinational multiplier datapath for the RV32M/Zmmul multiply subset.
+-    // Low 32 bits are identical for signed and unsigned multiply. The high-word
+-    // variants need the correct operand signedness.
++    // RV32M multiply datapath.
++    //
++    // Default performance mode keeps the original one-cycle combinational MUL
++    // path, which is useful for CoreMark/MHz studies. ENABLE_TIMING_MULDIV
++    // removes these multipliers from EX; top.v then routes M instructions
++    // through rv32_muldiv_unit and overrides the ALU result when it completes.
++`ifndef ENABLE_TIMING_MULDIV
+     wire        [63:0] rs1_u64 = {32'b0, rs1_data};
+     wire        [63:0] rs2_u64 = {32'b0, rs2_data};
+     wire signed [63:0] rs1_s64 = {{32{rs1_data[31]}}, rs1_data};
+@@ -56,6 +60,11 @@
+     wire        [63:0] mul_uu = rs1_u64 * rs2_u64;
+     wire signed [63:0] mul_ss = rs1_s64 * rs2_s64;
+     wire signed [63:0] mul_su = rs1_s64 * rs2_u_s64;
++`else
++    wire        [63:0] mul_uu = 64'd0;
++    wire signed [63:0] mul_ss = 64'sd0;
++    wire signed [63:0] mul_su = 64'sd0;
++`endif
+ 
+     // ------------------------------------------------------------------------
+     // Simulation-only combinational divider.
+diff -ru /mnt/data/orig_bpred/RISC-V_CPU_NEW/src/ID_EX.v /mnt/data/work_muldiv/RISC-V_CPU_NEW/src/ID_EX.v
+--- /mnt/data/orig_bpred/RISC-V_CPU_NEW/src/ID_EX.v	2026-06-11 12:59:25.000000000 +0000
++++ /mnt/data/work_muldiv/RISC-V_CPU_NEW/src/ID_EX.v	2026-06-11 17:01:41.817817026 +0000
+@@ -2,6 +2,7 @@
+     input         clk,
+     input         rst,
+     input         idex_flush,
++    input         idex_stall,
+ 
+     // From ID stage
+     input  [31:0] id_pc,
+@@ -100,7 +101,7 @@
+             ex_fence           <= 1'b0;
+             ex_pred_taken      <= 1'b0;
+             ex_pred_target     <= 32'b0;
+-        end else begin
++        end else if (!idex_stall) begin
+             ex_pc              <= id_pc;
+             ex_rs1_val         <= id_rs1_val;
+             ex_rs2_val         <= id_rs2_val;
+Only in /mnt/data/work_muldiv/RISC-V_CPU_NEW/src: rv32_muldiv_unit.v
+diff -ru /mnt/data/orig_bpred/RISC-V_CPU_NEW/src/tb_top.v /mnt/data/work_muldiv/RISC-V_CPU_NEW/src/tb_top.v
+--- /mnt/data/orig_bpred/RISC-V_CPU_NEW/src/tb_top.v	2026-06-11 14:32:57.000000000 +0000
++++ /mnt/data/work_muldiv/RISC-V_CPU_NEW/src/tb_top.v	2026-06-11 17:03:57.341798663 +0000
+@@ -90,10 +90,15 @@
+     reg [63:0] perf_divu_count;
+     reg [63:0] perf_rem_count;
+     reg [63:0] perf_remu_count;
++    reg [63:0] perf_muldiv_start_count;
++    reg [63:0] perf_muldiv_busy_cycles;
++    reg [63:0] perf_muldiv_done_count;
++    reg [63:0] perf_muldiv_stall_cycles;
+ 
+     wire perf_id_issues_non_nop =
+         !rst &&
+         !tb_top.uut.idex_flush &&
++        !tb_top.uut.id_stall &&
+         (tb_top.uut.id_instr != 32'h0000_0013);
+ 
+     wire perf_ex_is_mul    = (tb_top.uut.ex_alu_op == PERF_ALU_MUL);
+@@ -105,6 +110,10 @@
+     wire perf_ex_is_rem    = (tb_top.uut.ex_alu_op == PERF_ALU_REM);
+     wire perf_ex_is_remu   = (tb_top.uut.ex_alu_op == PERF_ALU_REMU);
+ 
++    // In ENABLE_TIMING_MULDIV mode the EX-stage M instruction is held while
++    // the registered multiplier runs. Count the M instruction once, on the
++    // cycle it is allowed to leave EX, not once per stall cycle.
++    wire perf_ex_count_enable = !tb_top.uut.muldiv_stall;
+ 
+     wire perf_load_use_hazard =
+         tb_top.uut.ex_mem_read &&
+@@ -162,6 +171,10 @@
+             perf_divu_count                  <= 64'd0;
+             perf_rem_count                   <= 64'd0;
+             perf_remu_count                  <= 64'd0;
++            perf_muldiv_start_count          <= 64'd0;
++            perf_muldiv_busy_cycles          <= 64'd0;
++            perf_muldiv_done_count           <= 64'd0;
++            perf_muldiv_stall_cycles         <= 64'd0;
+         end else begin
+             perf_total_cycles <= perf_total_cycles + 64'd1;
+ 
+@@ -220,14 +233,23 @@
+             if (tb_top.uut.ex_redirect)
+                 perf_redirect_count <= perf_redirect_count + 64'd1;
+ 
+-            if (perf_ex_is_mul)    perf_mul_count    <= perf_mul_count + 64'd1;
+-            if (perf_ex_is_mulh)   perf_mulh_count   <= perf_mulh_count + 64'd1;
+-            if (perf_ex_is_mulhsu) perf_mulhsu_count <= perf_mulhsu_count + 64'd1;
+-            if (perf_ex_is_mulhu)  perf_mulhu_count  <= perf_mulhu_count + 64'd1;
+-            if (perf_ex_is_div)    perf_div_count    <= perf_div_count + 64'd1;
+-            if (perf_ex_is_divu)   perf_divu_count   <= perf_divu_count + 64'd1;
+-            if (perf_ex_is_rem)    perf_rem_count    <= perf_rem_count + 64'd1;
+-            if (perf_ex_is_remu)   perf_remu_count   <= perf_remu_count + 64'd1;
++            if (tb_top.uut.muldiv_start)
++                perf_muldiv_start_count <= perf_muldiv_start_count + 64'd1;
++            if (tb_top.uut.muldiv_busy)
++                perf_muldiv_busy_cycles <= perf_muldiv_busy_cycles + 64'd1;
++            if (tb_top.uut.muldiv_done)
++                perf_muldiv_done_count <= perf_muldiv_done_count + 64'd1;
++            if (tb_top.uut.muldiv_stall)
++                perf_muldiv_stall_cycles <= perf_muldiv_stall_cycles + 64'd1;
++
++            if (perf_ex_count_enable && perf_ex_is_mul)    perf_mul_count    <= perf_mul_count + 64'd1;
++            if (perf_ex_count_enable && perf_ex_is_mulh)   perf_mulh_count   <= perf_mulh_count + 64'd1;
++            if (perf_ex_count_enable && perf_ex_is_mulhsu) perf_mulhsu_count <= perf_mulhsu_count + 64'd1;
++            if (perf_ex_count_enable && perf_ex_is_mulhu)  perf_mulhu_count  <= perf_mulhu_count + 64'd1;
++            if (perf_ex_count_enable && perf_ex_is_div)    perf_div_count    <= perf_div_count + 64'd1;
++            if (perf_ex_count_enable && perf_ex_is_divu)   perf_divu_count   <= perf_divu_count + 64'd1;
++            if (perf_ex_count_enable && perf_ex_is_rem)    perf_rem_count    <= perf_rem_count + 64'd1;
++            if (perf_ex_count_enable && perf_ex_is_remu)   perf_remu_count   <= perf_remu_count + 64'd1;
+         end
+     end
+ 
+@@ -272,6 +294,10 @@
+             $display("PERF divu_count %0d", perf_divu_count);
+             $display("PERF rem_count %0d", perf_rem_count);
+             $display("PERF remu_count %0d", perf_remu_count);
++            $display("PERF muldiv_start_count %0d", perf_muldiv_start_count);
++            $display("PERF muldiv_busy_cycles %0d", perf_muldiv_busy_cycles);
++            $display("PERF muldiv_done_count %0d", perf_muldiv_done_count);
++            $display("PERF muldiv_stall_cycles %0d", perf_muldiv_stall_cycles);
+             $display("================================================");
+         end
+     endtask
+diff -ru /mnt/data/orig_bpred/RISC-V_CPU_NEW/src/top.v /mnt/data/work_muldiv/RISC-V_CPU_NEW/src/top.v
+--- /mnt/data/orig_bpred/RISC-V_CPU_NEW/src/top.v	2026-06-11 14:32:30.000000000 +0000
++++ /mnt/data/work_muldiv/RISC-V_CPU_NEW/src/top.v	2026-06-11 17:03:07.012834596 +0000
+@@ -19,6 +19,12 @@
+     localparam RAS_DEPTH      = 16;
+     localparam RAS_PTR_BITS   = 4;
+ 
++    // ALU opcodes shared with ID/EX for optional timing-friendly MUL path.
++    localparam [4:0] ALU_MUL    = 5'd10;
++    localparam [4:0] ALU_MULH   = 5'd11;
++    localparam [4:0] ALU_MULHSU = 5'd12;
++    localparam [4:0] ALU_MULHU  = 5'd13;
++
+     // Redirect from EX
+     wire        ex_redirect;
+     wire [31:0] ex_redirect_pc;
+@@ -36,6 +42,20 @@
+     wire        pc_stall;
+     wire        frontend_if_stall;
+ 
++    wire        hazard_if_stall;
++    wire        hazard_id_stall;
++    wire        hazard_ifid_flush;
++    wire        hazard_idex_flush;
++
++    // Optional multi-cycle MUL path holds IF/ID/EX while the registered
++    // multiplier is working. It is 0 in the default one-cycle comb-MUL build.
++    wire        muldiv_stall;
++
++    assign if_stall   = hazard_if_stall | muldiv_stall;
++    assign id_stall   = hazard_id_stall | muldiv_stall;
++    assign ifid_flush = hazard_ifid_flush;
++    assign idex_flush = hazard_idex_flush;
++
+     assign pc_stall          = if_stall | id_stall;
+     //assign frontend_if_stall = pc_stall & ~ex_redirect;
+ 
+@@ -272,6 +292,7 @@
+         .clk(clk),
+         .rst(rst),
+         .idex_flush(idex_flush),
++        .idex_stall(muldiv_stall),
+ 
+         .id_pc(id_pc),
+         .id_rs1_val(id_rs1_val),
+@@ -361,7 +382,7 @@
+     reg [31:0] mem_pc_q;
+ 
+     assign ex_can_forward_d =
+-        ex_reg_write & ~ex_mem_read & ~ex_csr_hit & (ex_rd_addr != 5'd0);
++        ex_reg_write & ~ex_mem_read & ~ex_csr_hit & (ex_rd_addr != 5'd0) & ~muldiv_stall;
+ 
+     assign wb_can_forward =
+         wb_wen_final & (wb_rd_addr != 5'd0);
+@@ -439,6 +460,7 @@
+ 
+     // EX stage
+     wire [31:0] ex_auipc_result;
++    wire [31:0] ex_alu_result_raw;
+     wire [31:0] ex_alu_result;
+     wire        ex_actual_taken;
+     wire [31:0] ex_pc_imm_target_fast;
+@@ -455,13 +477,62 @@
+         .branch_op(ex_branch_op),
+         .jal(ex_jal),
+         .jalr(ex_jalr),
+-        .alu_core_result(ex_alu_result),
++        .alu_core_result(ex_alu_result_raw),
+         .pc_plus4(ex_pc_plus4),
+         .auipc_result(ex_auipc_result),
+         .branch_target(ex_branch_target),
+         .branch_taken(ex_actual_taken)
+     );
+ 
++    // --------------------------------------------------------------------
++    // Optional timing-friendly registered MUL path.
++    // --------------------------------------------------------------------
++    wire        ex_is_mul_op;
++    wire [2:0]  muldiv_op;
++    wire        muldiv_start;
++    wire        muldiv_busy;
++    wire        muldiv_done;
++    wire [31:0] muldiv_result;
++
++    assign ex_is_mul_op =
++        (ex_alu_op == ALU_MUL)    |
++        (ex_alu_op == ALU_MULH)   |
++        (ex_alu_op == ALU_MULHSU) |
++        (ex_alu_op == ALU_MULHU);
++
++    assign muldiv_op =
++        (ex_alu_op == ALU_MULH)   ? 3'd1 :
++        (ex_alu_op == ALU_MULHSU) ? 3'd2 :
++        (ex_alu_op == ALU_MULHU)  ? 3'd3 :
++                                    3'd0;
++
++`ifdef ENABLE_TIMING_MULDIV
++    assign muldiv_start = ex_is_mul_op & ~muldiv_busy & ~muldiv_done;
++    assign muldiv_stall = ex_is_mul_op & ~muldiv_done;
++
++    rv32_muldiv_unit u_muldiv (
++        .clk   (clk),
++        .rst   (rst),
++        .start (muldiv_start),
++        .op    (muldiv_op),
++        .rs1   (ex_rs1_fwd),
++        .rs2   (ex_rs2_fwd),
++        .busy  (muldiv_busy),
++        .done  (muldiv_done),
++        .result(muldiv_result)
++    );
++
++    assign ex_alu_result = ex_is_mul_op ? muldiv_result : ex_alu_result_raw;
++`else
++    assign muldiv_start  = 1'b0;
++    assign muldiv_busy   = 1'b0;
++    assign muldiv_done   = 1'b0;
++    assign muldiv_result = 32'b0;
++    assign muldiv_stall  = 1'b0;
++
++    assign ex_alu_result = ex_alu_result_raw;
++`endif
++
+     // IF-stage predictors
+     bht_2bit #(.INDEX_BITS(BHT_INDEX_BITS)) u_bht (
+         .clk         (clk),
+@@ -547,6 +618,29 @@
+                                 ex_pc_plus4;
+ 
+     // EX/MEM pipeline register
++    // While the registered MUL unit is working, keep the MUL instruction in EX
++    // and inject bubbles into EX/MEM. On the done cycle muldiv_stall deasserts
++    // and the real MUL result/control are captured normally.
++    wire        ex_to_mem_bubble = muldiv_stall;
++
++    wire [31:0] ex_mem_pc_in                = ex_to_mem_bubble ? 32'b0 : ex_pc;
++    wire [31:0] ex_mem_alu_result_in        = ex_to_mem_bubble ? 32'b0 : ex_alu_result;
++    wire [31:0] ex_mem_rs2_store_in         = ex_to_mem_bubble ? 32'b0 : ex_rs2_fwd;
++    wire [4:0]  ex_mem_rd_addr_in           = ex_to_mem_bubble ? 5'b0  : ex_rd_addr;
++    wire        ex_mem_reg_write_in         = ex_to_mem_bubble ? 1'b0  : ex_reg_write;
++    wire        ex_mem_mem_read_in          = ex_to_mem_bubble ? 1'b0  : ex_mem_read;
++    wire        ex_mem_mem_write_in         = ex_to_mem_bubble ? 1'b0  : ex_mem_write;
++    wire [1:0]  ex_mem_wb_sel_in            = ex_to_mem_bubble ? 2'b0  : ex_wb_sel;
++    wire [1:0]  ex_mem_load_size_in         = ex_to_mem_bubble ? 2'b10 : ex_load_size;
++    wire [1:0]  ex_mem_store_size_in        = ex_to_mem_bubble ? 2'b10 : ex_store_size;
++    wire        ex_mem_load_signed_in       = ex_to_mem_bubble ? 1'b1  : ex_load_signed;
++    wire [31:0] ex_mem_wb_candidate_in      = ex_to_mem_bubble ? 32'b0 : ex_wb_candidate;
++    wire        ex_mem_csr_hit_in           = ex_to_mem_bubble ? 1'b0  : ex_csr_hit;
++    wire [11:0] ex_mem_csr_addr_in          = ex_to_mem_bubble ? 12'b0 : ex_csr_addr;
++    wire        ex_mem_ecall_in             = ex_to_mem_bubble ? 1'b0  : ex_ecall;
++    wire        ex_mem_ebreak_in            = ex_to_mem_bubble ? 1'b0  : ex_ebreak;
++    wire        ex_mem_fence_in             = ex_to_mem_bubble ? 1'b0  : ex_fence;
++
+     wire [31:0] mem_pc, mem_alu_result, mem_rs2_val_for_store, mem_wb_candidate;
+     wire [4:0]  mem_rd_addr;
+     wire        mem_reg_write, mem_mem_read, mem_mem_write, mem_load_signed;
+@@ -557,23 +651,23 @@
+         .clk(clk),
+         .rst(rst),
+         
+-        .ex_ebreak(ex_ebreak),
+-        .ex_ecall(ex_ecall),
+-        .ex_fence(ex_fence),
+-        .ex_pc(ex_pc),
+-        .ex_alu_result(ex_alu_result),
+-        .ex_rs2_val_for_store(ex_rs2_fwd),
+-        .ex_rd_addr(ex_rd_addr),
+-        .ex_reg_write(ex_reg_write),
+-        .ex_mem_read(ex_mem_read),
+-        .ex_mem_write(ex_mem_write),
+-        .ex_wb_sel(ex_wb_sel),
+-        .ex_load_size(ex_load_size),
+-        .ex_store_size(ex_store_size),
+-        .ex_load_signed(ex_load_signed),
+-        .ex_wb_candidate(ex_wb_candidate),
+-        .ex_csr_hit(ex_csr_hit),
+-        .ex_csr_addr(ex_csr_addr),
++        .ex_ebreak(ex_mem_ebreak_in),
++        .ex_ecall(ex_mem_ecall_in),
++        .ex_fence(ex_mem_fence_in),
++        .ex_pc(ex_mem_pc_in),
++        .ex_alu_result(ex_mem_alu_result_in),
++        .ex_rs2_val_for_store(ex_mem_rs2_store_in),
++        .ex_rd_addr(ex_mem_rd_addr_in),
++        .ex_reg_write(ex_mem_reg_write_in),
++        .ex_mem_read(ex_mem_mem_read_in),
++        .ex_mem_write(ex_mem_mem_write_in),
++        .ex_wb_sel(ex_mem_wb_sel_in),
++        .ex_load_size(ex_mem_load_size_in),
++        .ex_store_size(ex_mem_store_size_in),
++        .ex_load_signed(ex_mem_load_signed_in),
++        .ex_wb_candidate(ex_mem_wb_candidate_in),
++        .ex_csr_hit(ex_mem_csr_hit_in),
++        .ex_csr_addr(ex_mem_csr_addr_in),
+ 
+         .mem_pc(mem_pc),
+         .mem_alu_result(mem_alu_result),
+@@ -698,10 +792,10 @@
+         .exmem_csr_hit   (mem_csr_hit),
+ 
+         .ex_redirect     (ex_redirect),
+-        .stall_if        (if_stall),
+-        .stall_id        (id_stall),
+-        .flush_ifid      (ifid_flush),
+-        .flush_idex      (idex_flush)
++        .stall_if        (hazard_if_stall),
++        .stall_id        (hazard_id_stall),
++        .flush_ifid      (hazard_ifid_flush),
++        .flush_idex      (hazard_idex_flush)
+     );
+ 
+     // ECALL/EBREAK pulses
+Only in /mnt/data/work_muldiv/RISC-V_CPU_NEW: timing_muldiv_commit1.patch

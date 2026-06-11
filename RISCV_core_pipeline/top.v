@@ -19,6 +19,12 @@ module top (
     localparam RAS_DEPTH      = 16;
     localparam RAS_PTR_BITS   = 4;
 
+    // ALU opcodes shared with ID/EX for optional timing-friendly MUL path.
+    localparam [4:0] ALU_MUL    = 5'd10;
+    localparam [4:0] ALU_MULH   = 5'd11;
+    localparam [4:0] ALU_MULHSU = 5'd12;
+    localparam [4:0] ALU_MULHU  = 5'd13;
+
     // Redirect from EX
     wire        ex_redirect;
     wire [31:0] ex_redirect_pc;
@@ -35,6 +41,20 @@ module top (
     wire        if_stall, id_stall, ifid_flush, idex_flush;
     wire        pc_stall;
     wire        frontend_if_stall;
+
+    wire        hazard_if_stall;
+    wire        hazard_id_stall;
+    wire        hazard_ifid_flush;
+    wire        hazard_idex_flush;
+
+    // Optional multi-cycle MUL path holds IF/ID/EX while the registered
+    // multiplier is working. It is 0 in the default one-cycle comb-MUL build.
+    wire        muldiv_stall;
+
+    assign if_stall   = hazard_if_stall | muldiv_stall;
+    assign id_stall   = hazard_id_stall | muldiv_stall;
+    assign ifid_flush = hazard_ifid_flush;
+    assign idex_flush = hazard_idex_flush;
 
     assign pc_stall          = if_stall | id_stall;
     //assign frontend_if_stall = pc_stall & ~ex_redirect;
@@ -272,6 +292,7 @@ module top (
         .clk(clk),
         .rst(rst),
         .idex_flush(idex_flush),
+        .idex_stall(muldiv_stall),
 
         .id_pc(id_pc),
         .id_rs1_val(id_rs1_val),
@@ -361,7 +382,7 @@ module top (
     reg [31:0] mem_pc_q;
 
     assign ex_can_forward_d =
-        ex_reg_write & ~ex_mem_read & ~ex_csr_hit & (ex_rd_addr != 5'd0);
+        ex_reg_write & ~ex_mem_read & ~ex_csr_hit & (ex_rd_addr != 5'd0) & ~muldiv_stall;
 
     assign wb_can_forward =
         wb_wen_final & (wb_rd_addr != 5'd0);
@@ -439,6 +460,7 @@ module top (
 
     // EX stage
     wire [31:0] ex_auipc_result;
+    wire [31:0] ex_alu_result_raw;
     wire [31:0] ex_alu_result;
     wire        ex_actual_taken;
     wire [31:0] ex_pc_imm_target_fast;
@@ -455,12 +477,61 @@ module top (
         .branch_op(ex_branch_op),
         .jal(ex_jal),
         .jalr(ex_jalr),
-        .alu_core_result(ex_alu_result),
+        .alu_core_result(ex_alu_result_raw),
         .pc_plus4(ex_pc_plus4),
         .auipc_result(ex_auipc_result),
         .branch_target(ex_branch_target),
         .branch_taken(ex_actual_taken)
     );
+
+    // --------------------------------------------------------------------
+    // Optional timing-friendly registered MUL path.
+    // --------------------------------------------------------------------
+    wire        ex_is_mul_op;
+    wire [2:0]  muldiv_op;
+    wire        muldiv_start;
+    wire        muldiv_busy;
+    wire        muldiv_done;
+    wire [31:0] muldiv_result;
+
+    assign ex_is_mul_op =
+        (ex_alu_op == ALU_MUL)    |
+        (ex_alu_op == ALU_MULH)   |
+        (ex_alu_op == ALU_MULHSU) |
+        (ex_alu_op == ALU_MULHU);
+
+    assign muldiv_op =
+        (ex_alu_op == ALU_MULH)   ? 3'd1 :
+        (ex_alu_op == ALU_MULHSU) ? 3'd2 :
+        (ex_alu_op == ALU_MULHU)  ? 3'd3 :
+                                    3'd0;
+
+`ifdef ENABLE_TIMING_MULDIV
+    assign muldiv_start = ex_is_mul_op & ~muldiv_busy & ~muldiv_done;
+    assign muldiv_stall = ex_is_mul_op & ~muldiv_done;
+
+    rv32_muldiv_unit u_muldiv (
+        .clk   (clk),
+        .rst   (rst),
+        .start (muldiv_start),
+        .op    (muldiv_op),
+        .rs1   (ex_rs1_fwd),
+        .rs2   (ex_rs2_fwd),
+        .busy  (muldiv_busy),
+        .done  (muldiv_done),
+        .result(muldiv_result)
+    );
+
+    assign ex_alu_result = ex_is_mul_op ? muldiv_result : ex_alu_result_raw;
+`else
+    assign muldiv_start  = 1'b0;
+    assign muldiv_busy   = 1'b0;
+    assign muldiv_done   = 1'b0;
+    assign muldiv_result = 32'b0;
+    assign muldiv_stall  = 1'b0;
+
+    assign ex_alu_result = ex_alu_result_raw;
+`endif
 
     // IF-stage predictors
     bht_2bit #(.INDEX_BITS(BHT_INDEX_BITS)) u_bht (
@@ -547,6 +618,29 @@ module top (
                                 ex_pc_plus4;
 
     // EX/MEM pipeline register
+    // While the registered MUL unit is working, keep the MUL instruction in EX
+    // and inject bubbles into EX/MEM. On the done cycle muldiv_stall deasserts
+    // and the real MUL result/control are captured normally.
+    wire        ex_to_mem_bubble = muldiv_stall;
+
+    wire [31:0] ex_mem_pc_in                = ex_to_mem_bubble ? 32'b0 : ex_pc;
+    wire [31:0] ex_mem_alu_result_in        = ex_to_mem_bubble ? 32'b0 : ex_alu_result;
+    wire [31:0] ex_mem_rs2_store_in         = ex_to_mem_bubble ? 32'b0 : ex_rs2_fwd;
+    wire [4:0]  ex_mem_rd_addr_in           = ex_to_mem_bubble ? 5'b0  : ex_rd_addr;
+    wire        ex_mem_reg_write_in         = ex_to_mem_bubble ? 1'b0  : ex_reg_write;
+    wire        ex_mem_mem_read_in          = ex_to_mem_bubble ? 1'b0  : ex_mem_read;
+    wire        ex_mem_mem_write_in         = ex_to_mem_bubble ? 1'b0  : ex_mem_write;
+    wire [1:0]  ex_mem_wb_sel_in            = ex_to_mem_bubble ? 2'b0  : ex_wb_sel;
+    wire [1:0]  ex_mem_load_size_in         = ex_to_mem_bubble ? 2'b10 : ex_load_size;
+    wire [1:0]  ex_mem_store_size_in        = ex_to_mem_bubble ? 2'b10 : ex_store_size;
+    wire        ex_mem_load_signed_in       = ex_to_mem_bubble ? 1'b1  : ex_load_signed;
+    wire [31:0] ex_mem_wb_candidate_in      = ex_to_mem_bubble ? 32'b0 : ex_wb_candidate;
+    wire        ex_mem_csr_hit_in           = ex_to_mem_bubble ? 1'b0  : ex_csr_hit;
+    wire [11:0] ex_mem_csr_addr_in          = ex_to_mem_bubble ? 12'b0 : ex_csr_addr;
+    wire        ex_mem_ecall_in             = ex_to_mem_bubble ? 1'b0  : ex_ecall;
+    wire        ex_mem_ebreak_in            = ex_to_mem_bubble ? 1'b0  : ex_ebreak;
+    wire        ex_mem_fence_in             = ex_to_mem_bubble ? 1'b0  : ex_fence;
+
     wire [31:0] mem_pc, mem_alu_result, mem_rs2_val_for_store, mem_wb_candidate;
     wire [4:0]  mem_rd_addr;
     wire        mem_reg_write, mem_mem_read, mem_mem_write, mem_load_signed;
@@ -557,23 +651,23 @@ module top (
         .clk(clk),
         .rst(rst),
         
-        .ex_ebreak(ex_ebreak),
-        .ex_ecall(ex_ecall),
-        .ex_fence(ex_fence),
-        .ex_pc(ex_pc),
-        .ex_alu_result(ex_alu_result),
-        .ex_rs2_val_for_store(ex_rs2_fwd),
-        .ex_rd_addr(ex_rd_addr),
-        .ex_reg_write(ex_reg_write),
-        .ex_mem_read(ex_mem_read),
-        .ex_mem_write(ex_mem_write),
-        .ex_wb_sel(ex_wb_sel),
-        .ex_load_size(ex_load_size),
-        .ex_store_size(ex_store_size),
-        .ex_load_signed(ex_load_signed),
-        .ex_wb_candidate(ex_wb_candidate),
-        .ex_csr_hit(ex_csr_hit),
-        .ex_csr_addr(ex_csr_addr),
+        .ex_ebreak(ex_mem_ebreak_in),
+        .ex_ecall(ex_mem_ecall_in),
+        .ex_fence(ex_mem_fence_in),
+        .ex_pc(ex_mem_pc_in),
+        .ex_alu_result(ex_mem_alu_result_in),
+        .ex_rs2_val_for_store(ex_mem_rs2_store_in),
+        .ex_rd_addr(ex_mem_rd_addr_in),
+        .ex_reg_write(ex_mem_reg_write_in),
+        .ex_mem_read(ex_mem_mem_read_in),
+        .ex_mem_write(ex_mem_mem_write_in),
+        .ex_wb_sel(ex_mem_wb_sel_in),
+        .ex_load_size(ex_mem_load_size_in),
+        .ex_store_size(ex_mem_store_size_in),
+        .ex_load_signed(ex_mem_load_signed_in),
+        .ex_wb_candidate(ex_mem_wb_candidate_in),
+        .ex_csr_hit(ex_mem_csr_hit_in),
+        .ex_csr_addr(ex_mem_csr_addr_in),
 
         .mem_pc(mem_pc),
         .mem_alu_result(mem_alu_result),
@@ -698,10 +792,10 @@ module top (
         .exmem_csr_hit   (mem_csr_hit),
 
         .ex_redirect     (ex_redirect),
-        .stall_if        (if_stall),
-        .stall_id        (id_stall),
-        .flush_ifid      (ifid_flush),
-        .flush_idex      (idex_flush)
+        .stall_if        (hazard_if_stall),
+        .stall_id        (hazard_id_stall),
+        .flush_ifid      (hazard_ifid_flush),
+        .flush_idex      (hazard_idex_flush)
     );
 
     // ECALL/EBREAK pulses

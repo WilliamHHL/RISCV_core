@@ -90,10 +90,15 @@ module tb_top;
     reg [63:0] perf_divu_count;
     reg [63:0] perf_rem_count;
     reg [63:0] perf_remu_count;
+    reg [63:0] perf_muldiv_start_count;
+    reg [63:0] perf_muldiv_busy_cycles;
+    reg [63:0] perf_muldiv_done_count;
+    reg [63:0] perf_muldiv_stall_cycles;
 
     wire perf_id_issues_non_nop =
         !rst &&
         !tb_top.uut.idex_flush &&
+        !tb_top.uut.id_stall &&
         (tb_top.uut.id_instr != 32'h0000_0013);
 
     wire perf_ex_is_mul    = (tb_top.uut.ex_alu_op == PERF_ALU_MUL);
@@ -105,6 +110,10 @@ module tb_top;
     wire perf_ex_is_rem    = (tb_top.uut.ex_alu_op == PERF_ALU_REM);
     wire perf_ex_is_remu   = (tb_top.uut.ex_alu_op == PERF_ALU_REMU);
 
+    // In ENABLE_TIMING_MULDIV mode the EX-stage M instruction is held while
+    // the registered multiplier runs. Count the M instruction once, on the
+    // cycle it is allowed to leave EX, not once per stall cycle.
+    wire perf_ex_count_enable = !tb_top.uut.muldiv_stall;
 
     wire perf_load_use_hazard =
         tb_top.uut.ex_mem_read &&
@@ -162,6 +171,10 @@ module tb_top;
             perf_divu_count                  <= 64'd0;
             perf_rem_count                   <= 64'd0;
             perf_remu_count                  <= 64'd0;
+            perf_muldiv_start_count          <= 64'd0;
+            perf_muldiv_busy_cycles          <= 64'd0;
+            perf_muldiv_done_count           <= 64'd0;
+            perf_muldiv_stall_cycles         <= 64'd0;
         end else begin
             perf_total_cycles <= perf_total_cycles + 64'd1;
 
@@ -220,14 +233,23 @@ module tb_top;
             if (tb_top.uut.ex_redirect)
                 perf_redirect_count <= perf_redirect_count + 64'd1;
 
-            if (perf_ex_is_mul)    perf_mul_count    <= perf_mul_count + 64'd1;
-            if (perf_ex_is_mulh)   perf_mulh_count   <= perf_mulh_count + 64'd1;
-            if (perf_ex_is_mulhsu) perf_mulhsu_count <= perf_mulhsu_count + 64'd1;
-            if (perf_ex_is_mulhu)  perf_mulhu_count  <= perf_mulhu_count + 64'd1;
-            if (perf_ex_is_div)    perf_div_count    <= perf_div_count + 64'd1;
-            if (perf_ex_is_divu)   perf_divu_count   <= perf_divu_count + 64'd1;
-            if (perf_ex_is_rem)    perf_rem_count    <= perf_rem_count + 64'd1;
-            if (perf_ex_is_remu)   perf_remu_count   <= perf_remu_count + 64'd1;
+            if (tb_top.uut.muldiv_start)
+                perf_muldiv_start_count <= perf_muldiv_start_count + 64'd1;
+            if (tb_top.uut.muldiv_busy)
+                perf_muldiv_busy_cycles <= perf_muldiv_busy_cycles + 64'd1;
+            if (tb_top.uut.muldiv_done)
+                perf_muldiv_done_count <= perf_muldiv_done_count + 64'd1;
+            if (tb_top.uut.muldiv_stall)
+                perf_muldiv_stall_cycles <= perf_muldiv_stall_cycles + 64'd1;
+
+            if (perf_ex_count_enable && perf_ex_is_mul)    perf_mul_count    <= perf_mul_count + 64'd1;
+            if (perf_ex_count_enable && perf_ex_is_mulh)   perf_mulh_count   <= perf_mulh_count + 64'd1;
+            if (perf_ex_count_enable && perf_ex_is_mulhsu) perf_mulhsu_count <= perf_mulhsu_count + 64'd1;
+            if (perf_ex_count_enable && perf_ex_is_mulhu)  perf_mulhu_count  <= perf_mulhu_count + 64'd1;
+            if (perf_ex_count_enable && perf_ex_is_div)    perf_div_count    <= perf_div_count + 64'd1;
+            if (perf_ex_count_enable && perf_ex_is_divu)   perf_divu_count   <= perf_divu_count + 64'd1;
+            if (perf_ex_count_enable && perf_ex_is_rem)    perf_rem_count    <= perf_rem_count + 64'd1;
+            if (perf_ex_count_enable && perf_ex_is_remu)   perf_remu_count   <= perf_remu_count + 64'd1;
         end
     end
 
@@ -272,6 +294,10 @@ module tb_top;
             $display("PERF divu_count %0d", perf_divu_count);
             $display("PERF rem_count %0d", perf_rem_count);
             $display("PERF remu_count %0d", perf_remu_count);
+            $display("PERF muldiv_start_count %0d", perf_muldiv_start_count);
+            $display("PERF muldiv_busy_cycles %0d", perf_muldiv_busy_cycles);
+            $display("PERF muldiv_done_count %0d", perf_muldiv_done_count);
+            $display("PERF muldiv_stall_cycles %0d", perf_muldiv_stall_cycles);
             $display("================================================");
         end
     endtask

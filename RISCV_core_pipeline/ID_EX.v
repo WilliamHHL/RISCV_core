@@ -2,6 +2,7 @@ module ID_EX (
     input         clk,
     input         rst,
     input         idex_flush,
+    input         idex_stall,
 
     // From ID stage
     input  [31:0] id_pc,
@@ -100,7 +101,7 @@ module ID_EX (
             ex_fence           <= 1'b0;
             ex_pred_taken      <= 1'b0;
             ex_pred_target     <= 32'b0;
-        end else begin
+        end else if (!idex_stall) begin
             ex_pc              <= id_pc;
             ex_rs1_val         <= id_rs1_val;
             ex_rs2_val         <= id_rs2_val;

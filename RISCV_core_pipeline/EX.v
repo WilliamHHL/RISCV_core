@@ -44,9 +44,13 @@ module EX (
 
     wire [4:0] shamt = alu_rs2_imm ? imm[4:0] : rs2_data[4:0];//shamt=shift amount
 
-    // Combinational multiplier datapath for the RV32M/Zmmul multiply subset.
-    // Low 32 bits are identical for signed and unsigned multiply. The high-word
-    // variants need the correct operand signedness.
+    // RV32M multiply datapath.
+    //
+    // Default performance mode keeps the original one-cycle combinational MUL
+    // path, which is useful for CoreMark/MHz studies. ENABLE_TIMING_MULDIV
+    // removes these multipliers from EX; top.v then routes M instructions
+    // through rv32_muldiv_unit and overrides the ALU result when it completes.
+`ifndef ENABLE_TIMING_MULDIV
     wire        [63:0] rs1_u64 = {32'b0, rs1_data};
     wire        [63:0] rs2_u64 = {32'b0, rs2_data};
     wire signed [63:0] rs1_s64 = {{32{rs1_data[31]}}, rs1_data};
@@ -56,6 +60,11 @@ module EX (
     wire        [63:0] mul_uu = rs1_u64 * rs2_u64;
     wire signed [63:0] mul_ss = rs1_s64 * rs2_s64;
     wire signed [63:0] mul_su = rs1_s64 * rs2_u_s64;
+`else
+    wire        [63:0] mul_uu = 64'd0;
+    wire signed [63:0] mul_ss = 64'sd0;
+    wire signed [63:0] mul_su = 64'sd0;
+`endif
 
     // ------------------------------------------------------------------------
     // Simulation-only combinational divider.
