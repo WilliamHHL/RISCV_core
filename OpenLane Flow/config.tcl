@@ -25,6 +25,7 @@ set ::env(VERILOG_FILES) "\
 
 # ========== Synthesis defines ==========
 set ::env(SYNTH_DEFINES) [list "SYNTHESIS"]
+set ::env(SYNTH_STRATEGY) "AREA 0"
 
 # ========== Clock ==========
 set ::env(CLOCK_PORT) "clk"

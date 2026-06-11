@@ -29,7 +29,9 @@ module EX (
     localparam ALU_SRL   = 5'd8;
     localparam ALU_SRA   = 5'd9;
     // RV32M multiply/divide operations. MUL is the normal performance path.
-    // DIV/REM below are simulation-only when ENABLE_SIM_COMB_DIV is defined.
+    // In ENABLE_TIMING_MULDIV mode, top.v overrides all M-operation results
+    // with rv32_muldiv_unit. DIV/REM below remain simulation-only for the
+    // old ENABLE_SIM_COMB_DIV experiment.
     localparam ALU_MUL   = 5'd10;
     localparam ALU_MULH  = 5'd11;
     localparam ALU_MULHSU= 5'd12;
@@ -74,9 +76,9 @@ module EX (
     //   1. ENABLE_SIM_COMB_DIV must be passed to Verilator.
     //   2. SYNTHESIS must not be defined.
     //
-    // Do not use this divider for FPGA/ASIC implementation. A real design
-    // should replace it with an iterative or pipelined divider and stall EX
-    // while the divider is busy.
+    // Do not use this divider for FPGA/ASIC implementation. For real RTL,
+    // build with ENABLE_TIMING_MULDIV so top.v routes DIV/REM through the
+    // synthesizable iterative divider in rv32_muldiv_unit.v.
     // ------------------------------------------------------------------------
     wire div_by_zero = (alu_in2 == 32'b0);
     wire div_overflow = (rs1_data == 32'h8000_0000) && (alu_in2 == 32'hffff_ffff);

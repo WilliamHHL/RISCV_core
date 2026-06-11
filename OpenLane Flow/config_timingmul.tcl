@@ -25,6 +25,7 @@ set ::env(VERILOG_FILES) "\
 
 # ========== Synthesis defines (ENABLE_TIMING_MULDIV activates the registered multi-cycle MUL) ==========
 set ::env(SYNTH_DEFINES) [list "SYNTHESIS" "ENABLE_TIMING_MULDIV"]
+set ::env(SYNTH_STRATEGY) "AREA 0"
 
 # ========== Clock ==========
 set ::env(CLOCK_PORT) "clk"

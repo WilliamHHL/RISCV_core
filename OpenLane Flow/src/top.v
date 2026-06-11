@@ -24,6 +24,10 @@ module top (
     localparam [4:0] ALU_MULH   = 5'd11;
     localparam [4:0] ALU_MULHSU = 5'd12;
     localparam [4:0] ALU_MULHU  = 5'd13;
+    localparam [4:0] ALU_DIV    = 5'd14;
+    localparam [4:0] ALU_DIVU   = 5'd15;
+    localparam [4:0] ALU_REM    = 5'd16;
+    localparam [4:0] ALU_REMU   = 5'd17;
 
     // Redirect from EX
     wire        ex_redirect;
@@ -47,8 +51,8 @@ module top (
     wire        hazard_ifid_flush;
     wire        hazard_idex_flush;
 
-    // Optional multi-cycle MUL path holds IF/ID/EX while the registered
-    // multiplier is working. It is 0 in the default one-cycle comb-MUL build.
+    // Optional multi-cycle MUL/DIV path holds IF/ID/EX while the registered
+    // mul/div unit is working. It is 0 in the default one-cycle comb-MUL build.
     wire        muldiv_stall;
 
     assign if_stall   = hazard_if_stall | muldiv_stall;
@@ -485,30 +489,38 @@ module top (
     );
 
     // --------------------------------------------------------------------
-    // Optional timing-friendly registered MUL path.
+    // Optional timing-friendly registered MUL/DIV path.
     // --------------------------------------------------------------------
-    wire        ex_is_mul_op;
+    wire        ex_is_muldiv_op;
     wire [2:0]  muldiv_op;
     wire        muldiv_start;
     wire        muldiv_busy;
     wire        muldiv_done;
     wire [31:0] muldiv_result;
 
-    assign ex_is_mul_op =
+    assign ex_is_muldiv_op =
         (ex_alu_op == ALU_MUL)    |
         (ex_alu_op == ALU_MULH)   |
         (ex_alu_op == ALU_MULHSU) |
-        (ex_alu_op == ALU_MULHU);
+        (ex_alu_op == ALU_MULHU)  |
+        (ex_alu_op == ALU_DIV)    |
+        (ex_alu_op == ALU_DIVU)   |
+        (ex_alu_op == ALU_REM)    |
+        (ex_alu_op == ALU_REMU);
 
     assign muldiv_op =
         (ex_alu_op == ALU_MULH)   ? 3'd1 :
         (ex_alu_op == ALU_MULHSU) ? 3'd2 :
         (ex_alu_op == ALU_MULHU)  ? 3'd3 :
+        (ex_alu_op == ALU_DIV)    ? 3'd4 :
+        (ex_alu_op == ALU_DIVU)   ? 3'd5 :
+        (ex_alu_op == ALU_REM)    ? 3'd6 :
+        (ex_alu_op == ALU_REMU)   ? 3'd7 :
                                     3'd0;
 
 `ifdef ENABLE_TIMING_MULDIV
-    assign muldiv_start = ex_is_mul_op & ~muldiv_busy & ~muldiv_done;
-    assign muldiv_stall = ex_is_mul_op & ~muldiv_done;
+    assign muldiv_start = ex_is_muldiv_op & ~muldiv_busy & ~muldiv_done;
+    assign muldiv_stall = ex_is_muldiv_op & ~muldiv_done;
 
     rv32_muldiv_unit u_muldiv (
         .clk   (clk),
@@ -522,7 +534,7 @@ module top (
         .result(muldiv_result)
     );
 
-    assign ex_alu_result = ex_is_mul_op ? muldiv_result : ex_alu_result_raw;
+    assign ex_alu_result = ex_is_muldiv_op ? muldiv_result : ex_alu_result_raw;
 `else
     assign muldiv_start  = 1'b0;
     assign muldiv_busy   = 1'b0;
@@ -618,9 +630,9 @@ module top (
                                 ex_pc_plus4;
 
     // EX/MEM pipeline register
-    // While the registered MUL unit is working, keep the MUL instruction in EX
+    // While the registered MUL/DIV unit is working, keep the M instruction in EX
     // and inject bubbles into EX/MEM. On the done cycle muldiv_stall deasserts
-    // and the real MUL result/control are captured normally.
+    // and the real M result/control are captured normally.
     wire        ex_to_mem_bubble = muldiv_stall;
 
     wire [31:0] ex_mem_pc_in                = ex_to_mem_bubble ? 32'b0 : ex_pc;

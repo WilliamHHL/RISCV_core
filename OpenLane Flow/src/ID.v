@@ -64,8 +64,8 @@ module ID (
     localparam ALU_SRL   = 5'd8;
     localparam ALU_SRA   = 5'd9;
     // RV32M multiply/divide operations.
-    // ALU_DIV/ALU_DIVU/ALU_REM/ALU_REMU are intended only for the
-    // simulation-only combinational divider enabled by ENABLE_SIM_COMB_DIV.
+    // DIV/REM are decoded when either the simulation-only comb divider is
+    // enabled or the synthesizable timing-friendly MUL/DIV unit is enabled.
     localparam ALU_MUL   = 5'd10;
     localparam ALU_MULH  = 5'd11;
     localparam ALU_MULHSU= 5'd12;
@@ -188,47 +188,64 @@ module ID (
                 wb_sel      = WB_ALU;
 
                 // RV32M funct7=0000001.
-                // MUL/MULH/MULHSU/MULHU are normal combinational EX-stage
-                // operations. DIV/DIVU/REM/REMU are decoded only when the
-                // simulation-only ENABLE_SIM_COMB_DIV build flag is enabled.
-                // Without that flag they remain side-effect-free unsupported
-                // instructions, so the multiplier-only -mno-div run is safe.
+                // MUL/MULH/MULHSU/MULHU are always decoded. DIV/DIVU/REM/REMU
+                // are decoded only when either ENABLE_TIMING_MULDIV provides
+                // the synthesizable iterative divider, or ENABLE_SIM_COMB_DIV
+                // provides the old simulation-only divider. Otherwise they are
+                // side-effect-free unsupported instructions, so the
+                // multiplier-only -mno-div run is safe.
                 if (funct7 == 7'b0000001) begin
                     case (funct3)
                         3'b000: alu_op = ALU_MUL;    // MUL
                         3'b001: alu_op = ALU_MULH;   // MULH
                         3'b010: alu_op = ALU_MULHSU; // MULHSU
                         3'b011: alu_op = ALU_MULHU;  // MULHU
-                        3'b100: begin                // DIV, simulation-only
+                        3'b100: begin                // DIV
 `ifdef ENABLE_SIM_COMB_DIV
+                            alu_op = ALU_DIV;
+`else
+`ifdef ENABLE_TIMING_MULDIV
                             alu_op = ALU_DIV;
 `else
                             alu_op    = ALU_ADD;
                             reg_write = 1'b0;
 `endif
+`endif
                         end
-                        3'b101: begin                // DIVU, simulation-only
+                        3'b101: begin                // DIVU
 `ifdef ENABLE_SIM_COMB_DIV
+                            alu_op = ALU_DIVU;
+`else
+`ifdef ENABLE_TIMING_MULDIV
                             alu_op = ALU_DIVU;
 `else
                             alu_op    = ALU_ADD;
                             reg_write = 1'b0;
 `endif
+`endif
                         end
-                        3'b110: begin                // REM, simulation-only
+                        3'b110: begin                // REM
 `ifdef ENABLE_SIM_COMB_DIV
+                            alu_op = ALU_REM;
+`else
+`ifdef ENABLE_TIMING_MULDIV
                             alu_op = ALU_REM;
 `else
                             alu_op    = ALU_ADD;
                             reg_write = 1'b0;
 `endif
+`endif
                         end
-                        3'b111: begin                // REMU, simulation-only
+                        3'b111: begin                // REMU
 `ifdef ENABLE_SIM_COMB_DIV
+                            alu_op = ALU_REMU;
+`else
+`ifdef ENABLE_TIMING_MULDIV
                             alu_op = ALU_REMU;
 `else
                             alu_op    = ALU_ADD;
                             reg_write = 1'b0;
+`endif
 `endif
                         end
                         default: begin
