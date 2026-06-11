@@ -1,0 +1,15 @@
+obj_dir/
+*.log
+*.vcd
+*.fst
+program.hex
+data.hex
+Coremark/*.elf
+Coremark/*.bin
+Coremark/*.dump
+Coremark/*.map
+Coremark/program.hex
+Coremark/data.hex
+perf_*.summary.txt
+perf_*.raw.txt
+__pycache__/

@@ -9,17 +9,27 @@ module top (
    // wire  [31:0] pc;
     //wire [31:0] instr;
 
-    // Split predictor sizing:
-    // - keep BHT a little larger
-    // - shrink BTB to help timing
-    // - use a safer tag width to reduce false hits
-    localparam BHT_INDEX_BITS = 4;
-    localparam BTB_INDEX_BITS = 4;
+    // Branch predictor sizing.
+    // - 64-entry direct-mapped BTB, matching the common small-core baseline.
+    // - 64-entry 2-bit BHT to reduce destructive aliasing versus the old 16-entry table.
+    // - 16-entry return-address stack (RAS) for JALR return prediction.
+    localparam BHT_INDEX_BITS = 6;
+    localparam BTB_INDEX_BITS = 6;
     localparam BTB_TAG_BITS   = 12;
+    localparam RAS_DEPTH      = 16;
+    localparam RAS_PTR_BITS   = 4;
 
     // Redirect from EX
     wire        ex_redirect;
     wire [31:0] ex_redirect_pc;
+    wire [31:0] ex_pc_plus4;
+    wire [31:0] ex_branch_target;
+
+    // Resolved call/return classification for BTB/RAS update.
+    wire        ex_jal_call;
+    wire        ex_jalr_call;
+    wire        ex_jalr_return;
+    wire        ex_jalr_mispredict;
 
     // Stall / flush
     wire        if_stall, id_stall, ifid_flush, idex_flush;
@@ -45,16 +55,35 @@ module top (
     wire        bht_pred_taken;
     wire        btb_hit;
     wire        btb_is_jump;
+    wire        btb_is_return;
     wire [31:0] btb_pred_target;
+
+    wire        ras_top_valid;
+    wire [31:0] ras_top_addr;
+    wire        ras_pred_return;
 
     wire        if_pred_taken_raw;
     wire [31:0] if_pred_target_raw;
 
-    // Disable predictor redirection in a cycle where EX already redirects.
-    wire pred_taken_comb;
-    assign pred_taken_comb    = btb_hit & (btb_is_jump | bht_pred_taken);
-    assign if_pred_taken_raw  = pred_taken_comb;
-    assign if_pred_target_raw = btb_pred_target;
+    // Predictor policy:
+    // - branch entries use BHT direction and BTB target.
+    // - JAL/direct-jump entries are predicted taken from BTB.
+    // - return entries are predicted taken only when RAS has a valid top.
+    // This avoids accidentally using a BHT bit to redirect a return entry when
+    // the RAS is empty.
+    wire pred_is_branch_entry;
+    wire pred_branch_taken;
+    wire pred_jump_taken;
+    wire pred_return_taken;
+
+    assign pred_is_branch_entry = btb_hit & ~btb_is_jump & ~btb_is_return;
+    assign pred_branch_taken    = pred_is_branch_entry & bht_pred_taken;
+    assign pred_jump_taken      = btb_hit & btb_is_jump;
+    assign ras_pred_return      = btb_hit & btb_is_return & ras_top_valid;
+    assign pred_return_taken    = ras_pred_return;
+
+    assign if_pred_taken_raw  = pred_branch_taken | pred_jump_taken | pred_return_taken;
+    assign if_pred_target_raw = pred_return_taken ? ras_top_addr : btb_pred_target;
     
     PC_reg u_PC (
         .clk(clk),
@@ -67,6 +96,23 @@ module top (
 
         .if_pred_redirect(if_pred_taken_raw),
         .if_pred_target(if_pred_target_raw)
+    );
+
+    // 16-entry return-address stack. It predicts only entries that the BTB has
+    // learned are return instructions. Updates happen when the call/return
+    // reaches EX, matching the rest of this simple predictor's non-speculative
+    // update policy.
+    ras_stack #(
+        .DEPTH(RAS_DEPTH),
+        .PTR_BITS(RAS_PTR_BITS)
+    ) u_ras (
+        .clk       (clk),
+        .rst       (rst),
+        .top_valid (ras_top_valid),
+        .top_addr  (ras_top_addr),
+        .push      (ex_jal_call | ex_jalr_call),
+        .push_addr (ex_pc_plus4),
+        .pop       (ex_jalr_return)
     );
 
     // IF
@@ -116,7 +162,7 @@ module top (
     wire       reg_write_d, mem_read_d, mem_write_d;
     wire       branch_d, jal_d, jalr_d;
     wire [2:0] branch_op_d;
-    wire [3:0] alu_op_d;
+    wire [4:0] alu_op_d;
     wire       alu_rs2_imm_d;
     wire [1:0] wb_sel_d;
     wire       use_pc_add_d;
@@ -217,7 +263,7 @@ module top (
     wire        ex_reg_write, ex_mem_read, ex_mem_write, ex_branch, ex_jal, ex_jalr;
     wire        ex_pred_taken;
     wire [2:0]  ex_branch_op;
-    wire [3:0]  ex_alu_op;
+    wire [4:0]  ex_alu_op;
     wire        ex_alu_rs2_is_imm, ex_use_pc_add, ex_load_signed;
     wire [1:0]  ex_wb_sel, ex_load_size, ex_store_size;
     wire        ex_ecall, ex_ebreak, ex_fence;
@@ -392,8 +438,8 @@ module top (
                                                ex_rs2_val;
 
     // EX stage
-    wire [31:0] ex_pc_plus4, ex_auipc_result;
-    wire [31:0] ex_alu_result, ex_branch_target;
+    wire [31:0] ex_auipc_result;
+    wire [31:0] ex_alu_result;
     wire        ex_actual_taken;
     wire [31:0] ex_pc_imm_target_fast;
     assign ex_pc_imm_target_fast = ex_pc + ex_imm;
@@ -431,16 +477,18 @@ module top (
         .INDEX_BITS(BTB_INDEX_BITS),
         .TAG_BITS  (BTB_TAG_BITS)
     ) u_btb (
-        .clk         (clk),
-        .rst         (rst),
-        .r_pc        (pred_lookup_pc),
-        .hit         (btb_hit),
-        .pred_target (btb_pred_target),
-        .pred_is_jump(btb_is_jump),
-        .update_en   (ex_jal | (ex_branch & ex_actual_taken)),
-        .u_pc        (ex_pc),
-        .u_target    (ex_pc_imm_target_fast),
-        .u_is_jump   (ex_jal)
+        .clk           (clk),
+        .rst           (rst),
+        .r_pc          (pred_lookup_pc),
+        .hit           (btb_hit),
+        .pred_target   (btb_pred_target),
+        .pred_is_jump  (btb_is_jump),
+        .pred_is_return(btb_is_return),
+        .update_en     (ex_jal | (ex_branch & ex_actual_taken) | ex_jalr_return),
+        .u_pc          (ex_pc),
+        .u_target      (ex_jalr_return ? ex_branch_target : ex_pc_imm_target_fast),
+        .u_is_jump     (ex_jal),
+        .u_is_return   (ex_jalr_return)
     );
 
     // WB candidate selection in EX
@@ -451,10 +499,21 @@ module top (
         (ex_wb_sel == 2'b11) ? ex_imm :
                                ex_alu_result;
 
+    // Call/return classification for RAS.
+    // RISC-V standard return idiom: JALR x0, x1/x5, 0.
+    // Calls push only when rd is x1/x5. Plain JAL x0 jumps do not push.
+    wire ex_rd_is_link;
+    wire ex_rs1_is_link;
+    assign ex_rd_is_link   = (ex_rd_addr  == 5'd1) | (ex_rd_addr  == 5'd5);
+    assign ex_rs1_is_link  = (ex_rs1_addr == 5'd1) | (ex_rs1_addr == 5'd5);
+    assign ex_jal_call     = ex_jal  & ex_rd_is_link;
+    assign ex_jalr_call    = ex_jalr & ex_rd_is_link;
+    assign ex_jalr_return  = ex_jalr & ex_rs1_is_link & (ex_rd_addr == 5'd0);
+
     // Mispredict / false-hit detection
     // - conditional branch: direction + target
     // - JAL: direction + target
-    // - JALR: always redirect in EX in this version
+    // - JALR: direction + target, now allowing correctly predicted RAS returns
     // - false predicted-taken on a non-control instruction: recover to PC+4
     wire ex_dir_mispredict;
     wire ex_tgt_mispredict;
@@ -472,10 +531,12 @@ module top (
     // If IF predicted taken but the decoded instruction in EX is not control-flow,
     // this was a false BTB hit / alias. Recover to sequential PC.
     assign ex_false_pred_nonctrl = ex_pred_taken & ~ex_is_ctrl;
+    assign ex_jalr_mispredict = ex_jalr &
+        (~ex_pred_taken | (ex_pred_target != ex_branch_target));
 
     assign ex_redirect =
         ex_false_pred_nonctrl ? 1'b1 :
-        ex_jalr               ? 1'b1 :
+        ex_jalr               ? ex_jalr_mispredict :
         (ex_branch | ex_jal)  ? (ex_dir_mispredict | ex_tgt_mispredict) :
                                 1'b0;
 

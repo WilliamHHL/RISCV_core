@@ -19,7 +19,7 @@ module ID (
     output reg        jal,          // JAL
     output reg        jalr,         // JALR
     output reg [2:0]  branch_op,    // branch comparator select (funct3)
-    output reg [3:0]  alu_op,
+    output reg [4:0]  alu_op,
     output reg        alu_rs2_imm,  // 1: immediate, 0: rs2
     output reg [1:0]  wb_sel,       // 00: ALU, 01: MEM, 10: PC+4, 11: IMM
     output reg        use_pc_add,    // 1: use pc + imm for AUIPC via ALU path
@@ -53,16 +53,27 @@ module ID (
     localparam IMM_J = 3'd4;
 
     // ALU ops
-    localparam ALU_ADD  = 4'd0;
-    localparam ALU_SUB  = 4'd1;
-    localparam ALU_AND  = 4'd2;
-    localparam ALU_OR   = 4'd3;
-    localparam ALU_XOR  = 4'd4;
-    localparam ALU_SLT  = 4'd5;
-    localparam ALU_SLTU = 4'd6;
-    localparam ALU_SLL  = 4'd7;
-    localparam ALU_SRL  = 4'd8;
-    localparam ALU_SRA  = 4'd9;
+    localparam ALU_ADD  = 5'd0;
+    localparam ALU_SUB  = 5'd1;
+    localparam ALU_AND  = 5'd2;
+    localparam ALU_OR   = 5'd3;
+    localparam ALU_XOR  = 5'd4;
+    localparam ALU_SLT  = 5'd5;
+    localparam ALU_SLTU = 5'd6;
+    localparam ALU_SLL   = 5'd7;
+    localparam ALU_SRL   = 5'd8;
+    localparam ALU_SRA   = 5'd9;
+    // RV32M multiply/divide operations.
+    // ALU_DIV/ALU_DIVU/ALU_REM/ALU_REMU are intended only for the
+    // simulation-only combinational divider enabled by ENABLE_SIM_COMB_DIV.
+    localparam ALU_MUL   = 5'd10;
+    localparam ALU_MULH  = 5'd11;
+    localparam ALU_MULHSU= 5'd12;
+    localparam ALU_MULHU = 5'd13;
+    localparam ALU_DIV   = 5'd14;
+    localparam ALU_DIVU  = 5'd15;
+    localparam ALU_REM   = 5'd16;
+    localparam ALU_REMU  = 5'd17;
 
     // WB select
     localparam WB_ALU  = 2'd0;
@@ -175,21 +186,73 @@ module ID (
                 reg_write   = 1'b1;
                 alu_rs2_imm = 1'b0;
                 wb_sel      = WB_ALU;
-                case (funct3)
-                    3'b000: begin
-                        if (funct7 == 7'b0100000) alu_op = ALU_SUB; else alu_op = ALU_ADD;
-                    end
-                    3'b100: alu_op = ALU_XOR;
-                    3'b110: alu_op = ALU_OR;
-                    3'b111: alu_op = ALU_AND;
-                    3'b010: alu_op = ALU_SLT;
-                    3'b011: alu_op = ALU_SLTU;
-                    3'b001: alu_op = ALU_SLL;
-                    3'b101: begin
-                        if (funct7 == 7'b0100000) alu_op = ALU_SRA; else alu_op = ALU_SRL;
-                    end
-                    default: alu_op = ALU_ADD;
-                endcase
+
+                // RV32M funct7=0000001.
+                // MUL/MULH/MULHSU/MULHU are normal combinational EX-stage
+                // operations. DIV/DIVU/REM/REMU are decoded only when the
+                // simulation-only ENABLE_SIM_COMB_DIV build flag is enabled.
+                // Without that flag they remain side-effect-free unsupported
+                // instructions, so the multiplier-only -mno-div run is safe.
+                if (funct7 == 7'b0000001) begin
+                    case (funct3)
+                        3'b000: alu_op = ALU_MUL;    // MUL
+                        3'b001: alu_op = ALU_MULH;   // MULH
+                        3'b010: alu_op = ALU_MULHSU; // MULHSU
+                        3'b011: alu_op = ALU_MULHU;  // MULHU
+                        3'b100: begin                // DIV, simulation-only
+`ifdef ENABLE_SIM_COMB_DIV
+                            alu_op = ALU_DIV;
+`else
+                            alu_op    = ALU_ADD;
+                            reg_write = 1'b0;
+`endif
+                        end
+                        3'b101: begin                // DIVU, simulation-only
+`ifdef ENABLE_SIM_COMB_DIV
+                            alu_op = ALU_DIVU;
+`else
+                            alu_op    = ALU_ADD;
+                            reg_write = 1'b0;
+`endif
+                        end
+                        3'b110: begin                // REM, simulation-only
+`ifdef ENABLE_SIM_COMB_DIV
+                            alu_op = ALU_REM;
+`else
+                            alu_op    = ALU_ADD;
+                            reg_write = 1'b0;
+`endif
+                        end
+                        3'b111: begin                // REMU, simulation-only
+`ifdef ENABLE_SIM_COMB_DIV
+                            alu_op = ALU_REMU;
+`else
+                            alu_op    = ALU_ADD;
+                            reg_write = 1'b0;
+`endif
+                        end
+                        default: begin
+                            alu_op    = ALU_ADD;
+                            reg_write = 1'b0;
+                        end
+                    endcase
+                end else begin
+                    case (funct3)
+                        3'b000: begin
+                            if (funct7 == 7'b0100000) alu_op = ALU_SUB; else alu_op = ALU_ADD;
+                        end
+                        3'b100: alu_op = ALU_XOR;
+                        3'b110: alu_op = ALU_OR;
+                        3'b111: alu_op = ALU_AND;
+                        3'b010: alu_op = ALU_SLT;
+                        3'b011: alu_op = ALU_SLTU;
+                        3'b001: alu_op = ALU_SLL;
+                        3'b101: begin
+                            if (funct7 == 7'b0100000) alu_op = ALU_SRA; else alu_op = ALU_SRL;
+                        end
+                        default: alu_op = ALU_ADD;
+                    endcase
+                end
             end
 
             // STORE (SW only)

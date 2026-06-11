@@ -48,13 +48,13 @@ static inline void  portable_free(void* p)          { (void)p; }
 #endif
 
 #ifndef COMPILER_FLAGS
-#define COMPILER_FLAGS "-Os -ffreestanding -nostdlib -march=rv32i -mabi=ilp32"
+#define COMPILER_FLAGS "-O3 -ffreestanding -nostdlib -march=rv32i -mabi=ilp32"
 #endif
 
 /* ========== 计时相关 ==========
    只需设置CPU主频即可通用所有内核
 */
-#define CPU_FREQ_HZ 40000000u  // 填你的主频，单位Hz
+#define CPU_FREQ_HZ 40000000u  // 填你的主频，单位Hz,original is 40Mhz
 
 static inline unsigned int  time_in_secs(CORE_TICKS ticks) {
     return ticks / CPU_FREQ_HZ;

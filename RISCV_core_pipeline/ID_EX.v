@@ -19,7 +19,7 @@ module ID_EX (
     input         id_jal,
     input         id_jalr,
     input  [2:0]  id_branch_op,
-    input  [3:0]  id_alu_op,
+    input  [4:0]  id_alu_op,
     input         id_alu_rs2_is_imm,
     input  [1:0]  id_wb_sel,
     input         id_use_pc_add,
@@ -52,7 +52,7 @@ module ID_EX (
     output reg        ex_jal,
     output reg        ex_jalr,
     output reg [2:0]  ex_branch_op,
-    output reg [3:0]  ex_alu_op,
+    output reg [4:0]  ex_alu_op,
     output reg        ex_alu_rs2_is_imm,
     output reg [1:0]  ex_wb_sel,
     output reg        ex_use_pc_add,
@@ -86,7 +86,7 @@ module ID_EX (
             ex_jal             <= 1'b0;
             ex_jalr            <= 1'b0;
             ex_branch_op       <= 3'b000;
-            ex_alu_op          <= 4'd0;
+            ex_alu_op          <= 5'd0;
             ex_alu_rs2_is_imm  <= 1'b0;
             ex_wb_sel          <= 2'd0;
             ex_use_pc_add      <= 1'b0;

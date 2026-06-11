@@ -1,64 +1,85 @@
+COREMARK_HOME = $(HOME)/coremark
+
 CROSS      ?= riscv64-unknown-elf
 CC         := $(CROSS)-gcc
 OBJCOPY    := $(CROSS)-objcopy
 OBJDUMP    := $(CROSS)-objdump
 
-# 紧凑与节回收
-CFLAGS  := -Os -ffreestanding -fno-builtin -nostdlib -nostartfiles \
-           -march=rv32i_zicsr -mabi=ilp32 -Wall -Wextra \
+RV_ARCH       ?= rv32i_zicsr
+RV_ABI        ?= ilp32
+COREMARK_TAG  ?= rv32i-baseline
+EXTRA_CFLAGS  ?=
+
+CFLAGS  := -O3 -ffreestanding -fno-builtin -nostdlib -nostartfiles \
+           -march=$(RV_ARCH) -mabi=$(RV_ABI) $(EXTRA_CFLAGS) -Wall -Wextra \
            -fno-tree-loop-distribute-patterns -fno-tree-vectorize -fno-tree-slp-vectorize \
-           -ffunction-sections -fdata-sections
+           -ffunction-sections -fdata-sections \
+           '-DCOMPILER_VERSION="riscv gcc $(COREMARK_TAG)"' \
+           '-DCOMPILER_FLAGS="-O3 -ffreestanding -nostdlib -march=$(RV_ARCH) -mabi=$(RV_ABI) $(EXTRA_CFLAGS) tag=$(COREMARK_TAG)"'
 
 LDFLAGS := -Wl,-T,linker.ld -Wl,--gc-sections
 
-INCLUDES := -I.. -I.
+INCLUDES := -I. -I$(COREMARK_HOME)
 
 SRCS := \
   memcpy.c \
   memset.c \
-  ../core_list_join.c \
+  $(COREMARK_HOME)/core_list_join.c \
   core_main.c \
-  ../core_matrix.c \
-  ../core_state.c \
-  ../core_util.c \
+  $(COREMARK_HOME)/core_matrix.c \
+  $(COREMARK_HOME)/core_state.c \
+  $(COREMARK_HOME)/core_util.c \
   start.S \
   core_portme.c
 
-# 产物
+MAIN_ELF      := coremark.elf
 IMEM_ONLY_ELF := coremark_imem.elf
 DMEM_ONLY_ELF := coremark_dmem.elf
-PROGRAM_HEX   := program.hex     # 给 imem.v 读
-DATA_HEX      := data.hex        # 给 MEM.v 的 dmem 读（零基址）
+
+IMEM_BIN := imem.bin
+DMEM_BIN := dmem.bin
+
+PROGRAM_HEX   := program.hex
+DATA_HEX      := data.hex
+
+DMEM_BASE_HEX := 10000000
 
 all: $(PROGRAM_HEX) $(DATA_HEX)
 
-coremark.elf: $(SRCS) linker.ld core_portme.h
+$(MAIN_ELF): $(SRCS) linker.ld core_portme.h
 	$(CC) $(CFLAGS) $(INCLUDES) $(LDFLAGS) $(SRCS) -lgcc -o $@
 
-# 仅 IMEM 节
-$(IMEM_ONLY_ELF): coremark.elf
+$(IMEM_ONLY_ELF): $(MAIN_ELF)
 	$(OBJCOPY) --only-section .init --only-section .text $< $@
 
-# 仅 DMEM 节
-$(DMEM_ONLY_ELF): coremark.elf
+$(DMEM_ONLY_ELF): $(MAIN_ELF)
 	$(OBJCOPY) --only-section .rodata --only-section .data $< $@
 
-# 导出 IMEM hex（已是从 0 开始）
-$(PROGRAM_HEX): $(IMEM_ONLY_ELF)
-	$(OBJCOPY) -O verilog $< $@
+$(IMEM_BIN): $(IMEM_ONLY_ELF)
+	$(OBJCOPY) -O binary $< $@
 
-# 导出 DMEM hex（先导出 verilog，再把 @10000000 改成 @00000000）
-# 注：下面的 sed 命令把所有 @1xxxxxxxx（即 @10000000 起）重写为 @00000000。
-# 如果你的 DMEM_BASE 不是 0x10000000，请把 10000000 和 00000000 替换成对应的基址与 0。
-$(DATA_HEX): $(DMEM_ONLY_ELF)
-	$(OBJCOPY) -O verilog $< $@.tmp && \
-	sed -E 's/@10000000/@00000000/g' $@.tmp > $@ && \
-	rm -f $@.tmp
+$(DMEM_BIN): $(DMEM_ONLY_ELF)
+	$(OBJCOPY) -O binary \
+	  --change-section-vma .rodata-0x$(DMEM_BASE_HEX) \
+	  --change-section-vma .data-0x$(DMEM_BASE_HEX) \
+	  $< $@
+
+# Word-wide hex: one 32-bit word per line (little-endian byte swap)
+$(PROGRAM_HEX): $(IMEM_BIN)
+	xxd -p -c 4 $(IMEM_BIN) | awk '{print substr($$0,7,2) substr($$0,5,2) substr($$0,3,2) substr($$0,1,2)}' > $(PROGRAM_HEX)
+
+$(DATA_HEX): $(DMEM_BIN)
+	xxd -p -c 4 $(DMEM_BIN) | awk '{print substr($$0,7,2) substr($$0,5,2) substr($$0,3,2) substr($$0,1,2)}' > $(DATA_HEX)
+
+dump: $(MAIN_ELF)
+	$(OBJDUMP) -d -S $(MAIN_ELF) > $(MAIN_ELF:.elf=.dump)
 
 size:
-	$(OBJDUMP) -h coremark.elf
+	$(OBJDUMP) -h $(MAIN_ELF)
 
 clean:
-	rm -f coremark.elf $(IMEM_ONLY_ELF) $(DMEM_ONLY_ELF) $(PROGRAM_HEX) $(DATA_HEX)
+	rm -f $(MAIN_ELF) $(IMEM_ONLY_ELF) $(DMEM_ONLY_ELF) \
+	      $(IMEM_BIN) $(DMEM_BIN) \
+	      $(PROGRAM_HEX) $(DATA_HEX) *.dump
 
-.PHONY: all clean size
+.PHONY: all clean size dump

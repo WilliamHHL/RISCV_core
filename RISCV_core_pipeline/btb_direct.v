@@ -9,11 +9,13 @@ module btb_direct #(
     output wire        hit,
     output wire [31:0] pred_target,
     output wire        pred_is_jump,
+    output wire        pred_is_return,
 
     input  wire        update_en,
     input  wire [31:0] u_pc,
     input  wire [31:0] u_target,
-    input  wire        u_is_jump
+    input  wire        u_is_jump,
+    input  wire        u_is_return
 );
 
     localparam ENTRIES = (1 << INDEX_BITS);
@@ -21,7 +23,8 @@ module btb_direct #(
     reg [ENTRIES-1:0]   valid_bits;
     reg [TAG_BITS-1:0]  tag_array     [0:ENTRIES-1];
     reg [29:0]          target_array  [0:ENTRIES-1];
-    reg                 is_jump_array [0:ENTRIES-1];
+    reg                 is_jump_array   [0:ENTRIES-1];
+    reg                 is_return_array [0:ENTRIES-1];
 
     wire [INDEX_BITS-1:0] r_idx;
     wire [TAG_BITS-1:0]   r_tag;
@@ -32,6 +35,7 @@ module btb_direct #(
     wire [TAG_BITS-1:0]   tag_r;
     wire [29:0]           target_r;
     wire                  is_jump_r;
+    wire                  is_return_r;
 
     assign r_idx = r_pc[INDEX_BITS+1:2];
     assign u_idx = u_pc[INDEX_BITS+1:2];
@@ -42,11 +46,13 @@ module btb_direct #(
     assign valid_r  = valid_bits[r_idx];
     assign tag_r    = tag_array[r_idx];
     assign target_r = target_array[r_idx];
-    assign is_jump_r = is_jump_array[r_idx];
+    assign is_jump_r   = is_jump_array[r_idx];
+    assign is_return_r = is_return_array[r_idx];
 
-    assign hit         = valid_r & (tag_r == r_tag);
-    assign pred_target = {target_r, 2'b00};
-    assign pred_is_jump = is_jump_r;
+    assign hit            = valid_r & (tag_r == r_tag);
+    assign pred_target    = {target_r, 2'b00};
+    assign pred_is_jump   = is_jump_r;
+    assign pred_is_return = is_return_r;
 
     integer i;
     always @(posedge clk) begin
@@ -56,7 +62,8 @@ module btb_direct #(
             valid_bits[u_idx]    <= 1'b1;
             tag_array[u_idx]     <= u_tag;
             target_array[u_idx]  <= u_target[31:2];
-            is_jump_array[u_idx] <= u_is_jump;
+            is_jump_array[u_idx]   <= u_is_jump;
+            is_return_array[u_idx] <= u_is_return;
         end
     end
 
