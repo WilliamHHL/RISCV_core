@@ -13,3 +13,5 @@ Coremark/data.hex
 perf_*.summary.txt
 perf_*.raw.txt
 __pycache__/
+syn/reports/
+syn/*.lib

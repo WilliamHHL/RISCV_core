@@ -1,0 +1,27 @@
+read_verilog -DSYNTHESIS \
+  ../src/PC_reg.v \
+  ../src/bht_2bit.v \
+  ../src/btb_direct.v \
+  ../src/ras_stack.v \
+  ../src/IF_ID.v \
+  ../src/ID.v \
+  ../src/ID_EX.v \
+  ../src/EX.v \
+  ../src/EX_MEM.v \
+  ../src/MEM_WB.v \
+  ../src/reg_file.v \
+  ../src/immgen.v \
+  ../src/hazard_unit.v \
+  ../src/forwarding_unit.v \
+  ../src/csr_read.v \
+  ../src/csr_wb_read.v \
+  ../src/rv32_muldiv_unit.v \
+  synth_top_1kb_ffmem.v
+
+hierarchy -check -top synth_top_1kb_ffmem
+synth -top synth_top_1kb_ffmem
+dfflibmap -liberty sky130_fd_sc_hd__tt_025C_1v80.lib
+opt
+clean
+stat -liberty sky130_fd_sc_hd__tt_025C_1v80.lib
+write_verilog -noattr reports/combmul_mapped.v
